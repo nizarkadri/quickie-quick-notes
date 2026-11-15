@@ -54,6 +54,7 @@ Parallelizable: **only Task 2 and Task 4**, both after Task 1.
 | 10 | todo | — | — | — | — |
 
 ## Decisions
+- **2026-11-15 — Human ruling: "follow the blueprint whenever there is a conflict."** Applied: blueprint.md is the default source of truth. Where §7's illustrative snippets conflict with the un-editable test headers for `BarStateMachine` / `NoteEditSession` / `QuickNoteSession`, the TEST HEADERS govern — because the blueprint itself (README "Things the blueprint must add" + each test header's "CONTRACT THE BLUEPRINT MUST ADOPT") defers to them, and the tests are the gate and must not be edited. All other blueprint design (§1–§6, §7 `IStickyCoreClient`/`IScreenPositioner`/Win32 snippets, §8, §9, §10) is followed exactly.
 - **2026-11-15 — Task 3 split across the FFI boundary.** Task 3 spans Rust
   (`ffi.rs`) and C# (`Core/*`). Because the files are disjoint and the C ABI was
   already agreed (stickyDev-3 verified §6 verbatim), stickyDev-2 implements the
