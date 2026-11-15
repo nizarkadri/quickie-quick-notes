@@ -51,7 +51,7 @@ public partial class BarWindow : Window
         FocusHelper.ApplyNonActivatingToolWindowStyles(hwnd);
         FocusHelper.InstallNonActivatingHook(hwnd);
         FocusHelper.ApplyRoundedCorners(hwnd);
-        HMonitor = Win32.MonitorFromWindow(hwnd, Win32.MONITOR_DEFAULTTONEAREST);
+        // NOTE: HMonitor is set by ShowOnMonitor(bounds, hMonitor, dpi) — never derive it from an unpositioned HWND (FS1 trap).
 
         Deactivated += OnDeactivated;
     }
@@ -95,7 +95,7 @@ public partial class BarWindow : Window
         int token = ++_visibilityToken;
 
         double currentY = Root.RenderTransform is TranslateTransform t
-            ? t.Y
+            ? (double)t.GetValue(TranslateTransform.YProperty) // effective (animated) value, not the base value
             : 0;
 
         var transform = new TranslateTransform(0, currentY);

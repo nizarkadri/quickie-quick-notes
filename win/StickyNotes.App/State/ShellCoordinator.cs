@@ -145,6 +145,11 @@ public sealed class ShellCoordinator : IDisposable
         // SystemEvents fires on a threadpool thread — all WPF work must hop to the dispatcher.
         Application.Current.Dispatcher.BeginInvoke(new Action(() =>
         {
+            if (_disposed)
+            {
+                return; // shutdown already ran — a queued event must not resurrect the shell
+            }
+
             Machine.DisplaySettingsChanged();
             foreach (ShellAction action in Machine.DrainActions())
             {
