@@ -47,7 +47,7 @@ Parallelizable: **only Task 2 and Task 4**, both after Task 1.
 | 2 | done | AUTOMATED GATE PASSED 2026-11-15 (54/54) | 24cc78a | no test edits, no #[ignore], no new deps; 15 §6 methods verified | n/a |
 | 3 | done | AUTOMATED GATE PASSED 2026-11-15 (18/18 + 54/54) | 7d065b4 (+ review fixes bf1101b) | stronger-model review APPROVED (Dev-2); F1-F4,F6 fixed & re-reviewed PASS; F5 nit | n/a |
 | 4 | done | AUTOMATED GATE PASSED 2026-11-15 (Task=3\|Task=4 41/41) | 10abeeb (+ fixes df22308) | stronger-model review APPROVED (Dev-2); F1-F5+F8 fixed & re-reviewed | — |
-| 5 | manual-pending | AUTOMATED GATE PASSED 2026-11-15 (Task=3\|4\|5 59/59) | b6bade1 | review fixes FS1-FS10 applied; re-review requested | pending |
+| 5 | manual-pending | AUTOMATED GATE PASSED 2026-11-15 (Task=3\|4\|5 59/59) | b6bade1 | re-review 11/11 PASS (all FS1-FS10 closed); N1/N3 cleanup dispatched | pending |
 | 6 | todo | — | — | — | — |
 | 7+8 | todo | — | — | — | — |
 | 9 | todo | — | — | — | — |
