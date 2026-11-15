@@ -1,0 +1,11 @@
+# Rust
+/target/
+# .NET
+bin/
+obj/
+# Windows metadata
+*.Zone.Identifier
+# Local DB / test scratch
+*.db
+*.db-wal
+*.db-shm
