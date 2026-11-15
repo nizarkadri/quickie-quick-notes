@@ -3,8 +3,8 @@
 # .NET
 bin/
 obj/
-# Windows metadata
-*.Zone.Identifier
+# Windows metadata (note: separator is U+F03A, not a dot)
+*Zone.Identifier
 # Local DB / test scratch
 *.db
 *.db-wal
