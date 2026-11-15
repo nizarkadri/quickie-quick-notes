@@ -43,8 +43,8 @@ Parallelizable: **only Task 2 and Task 4**, both after Task 1.
 
 | Task | Status | Gate result + date | Commit | Reviewer notes | Manual sign-off |
 |---|---|---|---|---|---|
-| 1 | building | — | — | — | — |
-| 2 | todo | — | — | — | — |
+| 1 | done | AUTOMATED GATE PASSED 2026-11-15 | 983367e | 3 worker deviations accepted (EditorDeactivated named params, Tests.csproj System.IO using, sln Any CPU); orchestrator fixed 3 stub param names (nowMs→ms, how→reason); no manual items | n/a |
+| 2 | building | — | — | — | — |
 | 3 | todo | — | — | — | — |
 | 4 | todo | — | — | — | — |
 | 5 | todo | — | — | — | — |
@@ -75,4 +75,4 @@ Parallelizable: **only Task 2 and Task 4**, both after Task 1.
 - ~~Toolchain missing~~ — installed (see Decisions).
 
 ## Test renames
-- (none yet)
+- None. (Worker renamed `EditorDeactivated` *parameters* in a stub to match the test's named args — not a test edit.)
