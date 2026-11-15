@@ -120,6 +120,12 @@ public sealed class PinnedItem
     public static PinnedItem FromNote(NoteSummary note) => new(NoteKind, null, note);
 }
 
+internal static class PinnedItemJson
+{
+    /// <summary>Dedicated, permissive options for the flattened pinned-item payload (ignores "kind").</summary>
+    internal static readonly JsonSerializerOptions Options = new() { PropertyNameCaseInsensitive = false };
+}
+
 internal sealed class PinnedItemConverter : JsonConverter<PinnedItem>
 {
     public override PinnedItem Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
@@ -132,13 +138,15 @@ internal sealed class PinnedItemConverter : JsonConverter<PinnedItem>
         }
 
         string kind = kindEl.GetString() ?? throw new JsonException("pinned_items \"kind\" is not a string.");
+        // F4: deserialize the flattened payload with a DEDICATED options instance so a future
+        // switch to JsonUnmappedMemberHandling.Disallow on the shared options can't break chips.
         return kind switch
         {
             PinnedItem.GroupKind => PinnedItem.FromGroup(
-                JsonSerializer.Deserialize<GroupSummary>(root.GetRawText(), options)
+                JsonSerializer.Deserialize<GroupSummary>(root.GetRawText(), PinnedItemJson.Options)
                 ?? throw new JsonException("pinned_items group payload failed to deserialize.")),
             PinnedItem.NoteKind => PinnedItem.FromNote(
-                JsonSerializer.Deserialize<NoteSummary>(root.GetRawText(), options)
+                JsonSerializer.Deserialize<NoteSummary>(root.GetRawText(), PinnedItemJson.Options)
                 ?? throw new JsonException("pinned_items note payload failed to deserialize.")),
             _ => throw new JsonException($"Unknown pinned_items kind \"{kind}\"."),
         };

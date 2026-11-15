@@ -18,6 +18,10 @@ public sealed class StickyCoreClient : IStickyCoreClient
         AllowTrailingCommas = false,
     };
 
+    // Serializes InvokeJson against Dispose: the disposed-check, the handle read, the
+    // native call, and sn_core_close are all under this gate, so a Dispose can never
+    // zero/close the handle between a caller's check and its DllImport.
+    private readonly object _gate = new();
     private IntPtr _handle;
     private bool _disposed;
 
@@ -51,91 +55,132 @@ public sealed class StickyCoreClient : IStickyCoreClient
     public string DbPath { get; }
 
     public BarSnapshot GetBarSnapshot() =>
-        InvokeJson<BarSnapshot>(() => NativeCoreMethods.sn_get_bar_snapshot(_handle));
+        InvokeJson<BarSnapshot>(h => NativeCoreMethods.sn_get_bar_snapshot(h));
 
     public IReadOnlyList<NoteSummary> ListGroupNotes(long groupId) =>
-        InvokeJson<List<NoteSummary>>(() => NativeCoreMethods.sn_list_group_notes(_handle, groupId));
+        InvokeJson<List<NoteSummary>>(h => NativeCoreMethods.sn_list_group_notes(h, groupId));
 
-    public IReadOnlyList<NoteSummary> ListAppendTargets(int limit = 30) =>
-        InvokeJson<List<NoteSummary>>(() => NativeCoreMethods.sn_list_append_targets(_handle, checked((uint)limit)));
+    public IReadOnlyList<NoteSummary> ListAppendTargets(int limit = 30)
+    {
+        if (limit < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(limit), limit, "Limit must be non-negative.");
+        }
+
+        return InvokeJson<List<NoteSummary>>(h => NativeCoreMethods.sn_list_append_targets(h, (uint)limit));
+    }
 
     public Note GetNote(long noteId, bool markOpened) =>
-        InvokeJson<Note>(() => NativeCoreMethods.sn_get_note(_handle, noteId, markOpened));
+        InvokeJson<Note>(h => NativeCoreMethods.sn_get_note(h, noteId, markOpened));
 
     public Note CreateNote(long? groupId, string body = "") =>
-        InvokeJson<Note>(() => NativeCoreMethods.sn_create_note(_handle, groupId.HasValue, groupId ?? 0L, body ?? ""));
+        InvokeJson<Note>(h => NativeCoreMethods.sn_create_note(h, groupId.HasValue, groupId ?? 0L, body ?? ""));
 
     public NoteSummary UpdateNoteBody(long noteId, string body) =>
-        InvokeJson<NoteSummary>(() => NativeCoreMethods.sn_update_note_body(_handle, noteId, body ?? ""));
+        InvokeJson<NoteSummary>(h => NativeCoreMethods.sn_update_note_body(h, noteId, body ?? ""));
 
     public void DeleteNote(long noteId) =>
-        InvokeUnit(() => NativeCoreMethods.sn_delete_note(_handle, noteId));
+        InvokeUnit(h => NativeCoreMethods.sn_delete_note(h, noteId));
 
     public NoteSummary SetNotePinned(long noteId, bool pinned) =>
-        InvokeJson<NoteSummary>(() => NativeCoreMethods.sn_set_note_pinned(_handle, noteId, pinned));
+        InvokeJson<NoteSummary>(h => NativeCoreMethods.sn_set_note_pinned(h, noteId, pinned));
 
     public GroupSummary CreateGroup(string name, bool pinned = true) =>
-        InvokeJson<GroupSummary>(() => NativeCoreMethods.sn_create_group(_handle, name ?? "", pinned));
+        InvokeJson<GroupSummary>(h => NativeCoreMethods.sn_create_group(h, name ?? "", pinned));
 
     public GroupSummary RenameGroup(long groupId, string name) =>
-        InvokeJson<GroupSummary>(() => NativeCoreMethods.sn_rename_group(_handle, groupId, name ?? ""));
+        InvokeJson<GroupSummary>(h => NativeCoreMethods.sn_rename_group(h, groupId, name ?? ""));
 
     public void DeleteGroup(long groupId) =>
-        InvokeUnit(() => NativeCoreMethods.sn_delete_group(_handle, groupId));
+        InvokeUnit(h => NativeCoreMethods.sn_delete_group(h, groupId));
 
     public GroupSummary SetGroupPinned(long groupId, bool pinned) =>
-        InvokeJson<GroupSummary>(() => NativeCoreMethods.sn_set_group_pinned(_handle, groupId, pinned));
+        InvokeJson<GroupSummary>(h => NativeCoreMethods.sn_set_group_pinned(h, groupId, pinned));
 
     public Note QuickCapture(string text, QuickCaptureTarget target)
     {
         ArgumentNullException.ThrowIfNull(target);
-        return InvokeJson<Note>(() => NativeCoreMethods.sn_quick_capture(_handle, text ?? "", target.ToJson()));
+        return InvokeJson<Note>(h => NativeCoreMethods.sn_quick_capture(h, text ?? "", target.ToJson()));
     }
 
     /// <summary>Idempotent: closes the native handle exactly once.</summary>
     public void Dispose()
     {
-        if (_disposed)
+        lock (_gate)
         {
-            return;
-        }
+            if (_disposed)
+            {
+                return;
+            }
 
-        _disposed = true;
-        if (_handle != IntPtr.Zero)
-        {
-            NativeCoreMethods.sn_core_close(_handle);
-            _handle = IntPtr.Zero;
+            _disposed = true;
+            if (_handle != IntPtr.Zero)
+            {
+                NativeCoreMethods.sn_core_close(_handle);
+                _handle = IntPtr.Zero;
+            }
         }
 
         GC.SuppressFinalize(this);
     }
 
-    private T InvokeJson<T>(Func<FfiResult> call)
+#if DEBUG
+    /// <summary>Debug aid: a forgotten <c>using</c> fails loudly here instead of leaking the native handle silently.</summary>
+    ~StickyCoreClient()
     {
-        ThrowIfDisposed();
-        FfiResult res = call();
-        try
+        System.Diagnostics.Debug.Fail("StickyCoreClient was not disposed; closing the native handle from the finalizer.");
+        Dispose();
+    }
+#endif
+
+    private T InvokeJson<T>(Func<IntPtr, FfiResult> call)
+    {
+        lock (_gate)
         {
-            string text = PayloadText(res);
-            if (res.Status != 0)
+            if (_disposed)
             {
-                throw new StickyCoreException(res.Status, text);
+                throw new ObjectDisposedException(nameof(StickyCoreClient));
             }
 
-            return JsonSerializer.Deserialize<T>(text, JsonOpts)
-                ?? throw new StickyCoreException(5, $"Native returned null JSON for {typeof(T).Name}.");
-        }
-        finally
-        {
-            FreePayload(res);
+            IntPtr handle = _handle;
+            if (handle == IntPtr.Zero)
+            {
+                throw new ObjectDisposedException(nameof(StickyCoreClient));
+            }
+
+            FfiResult res = call(handle);
+            try
+            {
+                string text = PayloadText(res);
+                if (res.Status != 0)
+                {
+                    throw new StickyCoreException(res.Status, text);
+                }
+
+                return JsonSerializer.Deserialize<T>(text, JsonOpts)
+                    ?? throw new StickyCoreException(5, $"Native returned null JSON for {typeof(T).Name}.");
+            }
+            finally
+            {
+                FreePayload(res);
+            }
         }
     }
 
-    private void InvokeUnit(Func<FfiResult> call) =>
+    private void InvokeUnit(Func<IntPtr, FfiResult> call) =>
         InvokeJson<JsonElement>(call);
 
-    private static string PayloadText(FfiResult res) =>
-        res.Payload != IntPtr.Zero ? Marshal.PtrToStringUTF8(res.Payload) ?? string.Empty : string.Empty;
+    private static string PayloadText(FfiResult res)
+    {
+        if (res.Payload == IntPtr.Zero)
+        {
+            // Rust contract: payload is ALWAYS non-null, even for unit results. Null means contract violation.
+            System.Diagnostics.Debug.Fail("Native returned a null FfiResult.Payload (contract violation).");
+            return string.Empty;
+        }
+
+        return Marshal.PtrToStringUTF8(res.Payload) ?? string.Empty;
+    }
 
     private static void FreePayload(FfiResult res)
     {
@@ -145,11 +190,4 @@ public sealed class StickyCoreClient : IStickyCoreClient
         }
     }
 
-    private void ThrowIfDisposed()
-    {
-        if (_disposed)
-        {
-            throw new ObjectDisposedException(nameof(StickyCoreClient));
-        }
-    }
 }
