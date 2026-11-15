@@ -23,6 +23,7 @@ public static class FocusHelper
     }
 
     private static readonly Dictionary<IntPtr, WindowState> States = new();
+    private static readonly HashSet<IntPtr> HookedHwnds = new();
 
     /// <summary>Foreground window captured before the last ForceActivateAndFocus / BeginInlineEdit, if it was external.</summary>
     public static IntPtr SavedForegroundHwnd { get; private set; }
@@ -47,6 +48,7 @@ public static class FocusHelper
         lock (States)
         {
             States.Remove(hwnd);
+            HookedHwnds.Remove(hwnd);
         }
     }
 
@@ -57,9 +59,22 @@ public static class FocusHelper
     /// </summary>
     public static void InstallNonActivatingHook(IntPtr hwnd)
     {
+        lock (States)
+        {
+            if (!HookedHwnds.Add(hwnd))
+            {
+                return; // already hooked — HwndSource.AddHook is not idempotent
+            }
+        }
+
         StateFor(hwnd);
         if (HwndSource.FromHwnd(hwnd) is not { } source)
         {
+            lock (States)
+            {
+                HookedHwnds.Remove(hwnd);
+            }
+
             return;
         }
 
@@ -90,15 +105,20 @@ public static class FocusHelper
         _ = Win32.DwmSetWindowAttribute(hwnd, Win32.DWMWA_WINDOW_CORNER_PREFERENCE, ref pref, sizeof(int));
     }
 
-    /// <summary>Capture the foreground window if it belongs to another app (used before activating an editor).</summary>
-    public static void CaptureExternalForegroundHwnd()
+    private static IntPtr CaptureExternalForeground()
     {
         IntPtr fg = Win32.GetForegroundWindow();
         if (fg != IntPtr.Zero && !Win32.IsOwnAppWindow(fg))
         {
             SavedForegroundHwnd = fg;
+            return fg;
         }
+
+        return IntPtr.Zero;
     }
+
+    /// <summary>Capture the foreground window if it belongs to another app (used before activating an editor).</summary>
+    public static void CaptureExternalForegroundHwnd() => CaptureExternalForeground();
 
     /// <summary>
     /// Begin inline editing inside a WS_EX_NOACTIVATE window: captures the external foreground
@@ -113,11 +133,7 @@ public static class FocusHelper
         IntPtr hwnd = new WindowInteropHelper(window).Handle;
         WindowState state = StateFor(hwnd);
 
-        CaptureExternalForegroundHwnd();
-        if (SavedForegroundHwnd != IntPtr.Zero)
-        {
-            state.SavedForeground = SavedForegroundHwnd;
-        }
+        state.SavedForeground = CaptureExternalForeground();
 
         state.AllowActivate = true;
         int exStyle = Win32.GetWindowLong(hwnd, Win32.GWL_EXSTYLE);
@@ -148,7 +164,19 @@ public static class FocusHelper
 
         if (restorePreviousForeground)
         {
-            RestorePreviousForeground();
+            // Per-window restore: each inline editor returns focus to ITS OWN captured app.
+            IntPtr target = state.SavedForeground;
+            if (target != IntPtr.Zero && Win32.IsWindow(target))
+            {
+                _ = Win32.SetForegroundWindow(target);
+            }
+
+            if (SavedForegroundHwnd == target)
+            {
+                SavedForegroundHwnd = IntPtr.Zero;
+            }
+
+            state.SavedForeground = IntPtr.Zero;
         }
     }
 
@@ -201,30 +229,26 @@ public static class FocusHelper
             Win32.SWP_NOACTIVATE | Win32.SWP_SHOWWINDOW);
     }
 
-    /// <summary>Restore the previously captured external foreground window, if any.</summary>
+    /// <summary>Restore the previously captured external foreground window, if any. Cleared after a successful restore.</summary>
     public static void RestorePreviousForeground()
     {
         IntPtr saved = SavedForegroundHwnd;
         if (saved != IntPtr.Zero && Win32.IsWindow(saved))
         {
             _ = Win32.SetForegroundWindow(saved);
+            SavedForegroundHwnd = IntPtr.Zero;
         }
     }
 
     /// <summary>
-    /// Cheap fullscreen check for ONE monitor: true when a D3D fullscreen/presentation session is
-    /// running, or when the foreground window (excluding the desktop) is caption-less, visible and
-    /// covers the target monitor's full rcMonitor. QUNS_BUSY is intentionally NOT treated as
-    /// fullscreen (it is system-global and false-positives on DND/screen-share).
+    /// Cheap fullscreen check for ONE monitor: true when the foreground window is on the target
+    /// monitor AND (a D3D fullscreen/presentation session is running, or the window is caption-less,
+    /// visible and covers the monitor's full rcMonitor). QUNS is system-global, so it is honoured
+    /// only after the monitor gate — a game on monitor 1 must not suppress monitor 2.
+    /// QUNS_BUSY is intentionally NOT treated as fullscreen (DND/screen-share false positives).
     /// </summary>
     public static bool IsFullscreenOnMonitor(IntPtr targetMonitor)
     {
-        if (Win32.SHQueryUserNotificationState(out int quns) == 0
-            && (quns == Win32.QUNS_RUNNING_D3D_FULL_SCREEN || quns == Win32.QUNS_PRESENTATION_MODE))
-        {
-            return true;
-        }
-
         IntPtr fg = Win32.GetForegroundWindow();
         if (fg == IntPtr.Zero || fg == Win32.GetShellWindow() || Win32.IsDesktopClass(fg))
         {
@@ -234,6 +258,12 @@ public static class FocusHelper
         if (Win32.MonitorFromWindow(fg, Win32.MONITOR_DEFAULTTONULL) != targetMonitor)
         {
             return false;
+        }
+
+        if (Win32.SHQueryUserNotificationState(out int quns) == 0
+            && (quns == Win32.QUNS_RUNNING_D3D_FULL_SCREEN || quns == Win32.QUNS_PRESENTATION_MODE))
+        {
+            return true;
         }
 
         int style = Win32.GetWindowLong(fg, Win32.GWL_STYLE);
