@@ -1,0 +1,8 @@
+<Application x:Class="StickyNotes.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Task 1 skeleton: no StartupUri, no MainWindow yet (Task 5 owns App.xaml wiring). -->
+    <Application.Resources>
+        <ResourceDictionary />
+    </Application.Resources>
+</Application>

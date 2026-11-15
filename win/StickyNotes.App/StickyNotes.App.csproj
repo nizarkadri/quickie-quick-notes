@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>StickyNotes.App</AssemblyName>
+    <RootNamespace>StickyNotes.App</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <PlatformTarget>x64</PlatformTarget>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <!--
+    sticky_core.dll is produced by the release cargo build (see scripts/build.ps1) and
+    dropped into runtimes\win-x64\native. `Link` flattens it next to StickyNotes.App.exe,
+    which is what DllImport("sticky_core") resolves against (blueprint §9).
+  -->
+  <ItemGroup>
+    <None Include="runtimes\win-x64\native\sticky_core.dll"
+          Link="sticky_core.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          Visible="false" />
+  </ItemGroup>
+
+</Project>
