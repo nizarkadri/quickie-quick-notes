@@ -44,8 +44,8 @@ Parallelizable: **only Task 2 and Task 4**, both after Task 1.
 | Task | Status | Gate result + date | Commit | Reviewer notes | Manual sign-off |
 |---|---|---|---|---|---|
 | 1 | done | AUTOMATED GATE PASSED 2026-11-15 | 983367e | 3 worker deviations accepted (EditorDeactivated named params, Tests.csproj System.IO using, sln Any CPU); orchestrator fixed 3 stub param names (nowMs→ms, how→reason); no manual items | n/a |
-| 2 | building | — | — | — | — |
-| 3 | todo | — | — | — | — |
+| 2 | done | AUTOMATED GATE PASSED 2026-11-15 (54/54) | 24cc78a | no test edits, no #[ignore], no new deps; 15 §6 methods verified | n/a |
+| 3 | building | — | — | split: Rust ffi.rs (Dev-2) + C# StickyCoreClient (Dev-3) | — |
 | 4 | todo | — | — | — | — |
 | 5 | todo | — | — | — | — |
 | 6 | todo | — | — | — | — |
@@ -54,6 +54,11 @@ Parallelizable: **only Task 2 and Task 4**, both after Task 1.
 | 10 | todo | — | — | — | — |
 
 ## Decisions
+- **2026-11-15 — Task 3 split across the FFI boundary.** Task 3 spans Rust
+  (`ffi.rs`) and C# (`Core/*`). Because the files are disjoint and the C ABI was
+  already agreed (stickyDev-3 verified §6 verbatim), stickyDev-2 implements the
+  Rust half and stickyDev-3 the C# half in parallel. Orchestrator runs the
+  combined gate once both land.
 - **2026-11-15 — Task 1 contradiction resolution (human-approved).** The Task 1
   gate is unsatisfiable as written (App WinExe has no source; Tests reference App
   types from Tasks 3/4/5/7/8; monolithic Tests project can't compile until all App
