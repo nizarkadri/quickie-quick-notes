@@ -45,8 +45,8 @@ Parallelizable: **only Task 2 and Task 4**, both after Task 1.
 |---|---|---|---|---|---|
 | 1 | done | AUTOMATED GATE PASSED 2026-11-15 | 983367e | 3 worker deviations accepted (EditorDeactivated named params, Tests.csproj System.IO using, sln Any CPU); orchestrator fixed 3 stub param names (nowMs→ms, how→reason); no manual items | n/a |
 | 2 | done | AUTOMATED GATE PASSED 2026-11-15 (54/54) | 24cc78a | no test edits, no #[ignore], no new deps; 15 §6 methods verified | n/a |
-| 3 | building | — | — | split: Rust ffi.rs (Dev-2) + C# StickyCoreClient (Dev-3) | — |
-| 4 | todo | — | — | — | — |
+| 3 | done | AUTOMATED GATE PASSED 2026-11-15 (18/18 + 54/54) | 7d065b4 | stronger-model review APPROVED (Dev-2), no blocking; 6 non-blocking deferred (F1 Dispose/call race, F2 SafeHandle, F3-F6 nits) | n/a |
+| 4 | building | — | — | stickyDev-3 (Interop) | — |
 | 5 | todo | — | — | — | — |
 | 6 | todo | — | — | — | — |
 | 7+8 | todo | — | — | — | — |
