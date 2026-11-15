@@ -46,8 +46,8 @@ Parallelizable: **only Task 2 and Task 4**, both after Task 1.
 | 1 | done | AUTOMATED GATE PASSED 2026-11-15 | 983367e | 3 worker deviations accepted (EditorDeactivated named params, Tests.csproj System.IO using, sln Any CPU); orchestrator fixed 3 stub param names (nowMs→ms, how→reason); no manual items | n/a |
 | 2 | done | AUTOMATED GATE PASSED 2026-11-15 (54/54) | 24cc78a | no test edits, no #[ignore], no new deps; 15 §6 methods verified | n/a |
 | 3 | done | AUTOMATED GATE PASSED 2026-11-15 (18/18 + 54/54) | 7d065b4 (+ review fixes bf1101b) | stronger-model review APPROVED (Dev-2); F1-F4,F6 fixed & re-reviewed PASS; F5 nit | n/a |
-| 4 | fix | AUTOMATED GATE PASSED 2026-11-15 (Task=3\|Task=4 41/41) | 10abeeb | stronger-model review APPROVED (Dev-2); F1-F5+F8 fixes dispatched | — |
-| 5 | todo | — | — | — | — |
+| 4 | done | AUTOMATED GATE PASSED 2026-11-15 (Task=3\|Task=4 41/41) | 10abeeb (+ fixes df22308) | stronger-model review APPROVED (Dev-2); F1-F5+F8 fixed & re-reviewed | — |
+| 5 | building | — | — | stickyDev-3 (trigger/bar + focus spike) | — |
 | 6 | todo | — | — | — | — |
 | 7+8 | todo | — | — | — | — |
 | 9 | todo | — | — | — | — |
