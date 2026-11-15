@@ -145,6 +145,25 @@ internal static class Win32
     [DllImport("shell32.dll")]
     internal static extern int SHQueryUserNotificationState(out int pstate);
 
+    // MDT_EFFECTIVE_DPI
+    private const int MDT_EFFECTIVE_DPI = 0;
+
+    [DllImport("shcore.dll")]
+    internal static extern int GetDpiForMonitor(IntPtr hMonitor, int dpiType, out uint dpiX, out uint dpiY);
+
+    /// <summary>Effective DPI scale of the given monitor (1.0 == 96 DPI), or null if unavailable.</summary>
+    internal static double? DpiScaleOf(IntPtr hMonitor)
+    {
+        if (GetDpiForMonitor(hMonitor, MDT_EFFECTIVE_DPI, out uint x, out _) != 0 || x == 0)
+        {
+            return null;
+        }
+
+        return x / 96.0;
+    }
+
+
+
     [DllImport("dwmapi.dll", PreserveSig = true)]
     internal static extern int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
 

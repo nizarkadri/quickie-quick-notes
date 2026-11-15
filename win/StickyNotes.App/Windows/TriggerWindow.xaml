@@ -1,0 +1,21 @@
+<Window x:Class="StickyNotes.App.Windows.TriggerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Topmost="True"
+        Width="100"
+        Height="4"
+        Background="Transparent"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True">
+    <!-- 100x4 DIP notch at the top-center of its monitor; holds a 100x3 DIP pill. -->
+    <Border x:Name="Pill"
+            Width="100"
+            Height="3"
+            CornerRadius="1.5"
+            VerticalAlignment="Top"
+            Background="#38888888" />
+</Window>
