@@ -18,6 +18,7 @@
 pub mod core;
 pub mod db;
 pub mod errors;
+pub mod ffi;
 pub mod models;
 
 pub use crate::core::StickyCore;
