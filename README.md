@@ -4,6 +4,8 @@ A lightweight sticky-notes app that stays out of the way until you need it. Move
 
 Built with a **Rust core** (SQLite + FFI) and a **C# WPF** UI — no Electron, no WebView, just native windows. ~20–45 MB idle, 0% CPU when hidden.
 
+![StickyNotes in action](docs/screenshot.png)
+
 ---
 
 ## Features
