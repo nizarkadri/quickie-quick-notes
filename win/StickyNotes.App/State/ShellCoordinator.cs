@@ -414,6 +414,12 @@ public sealed class ShellCoordinator : IDisposable
             return;
         }
 
+        if (!_bar.TryGetPhysicalRect(out PxRect barRect))
+        {
+            // Bar fell over between '+' click and open — bail out cleanly (before creating the window).
+            return;
+        }
+
         (MonitorBounds bounds, double dpi, _) = BarContext();
         var win = new QuickNoteWindow(_core);
         List<NoteSummary> appendTargets;
@@ -430,13 +436,6 @@ public sealed class ShellCoordinator : IDisposable
         win.LoadTargets(_lastSnapshot ?? _core.GetBarSnapshot(), appendTargets);
         win.QuickNoteClosed += OnQuickNoteClosed;
         _quickNoteWindow = win;
-
-        if (!_bar.TryGetPhysicalRect(out PxRect barRect))
-        {
-            // Bar fell over between '+' click and open — bail out cleanly.
-            _quickNoteWindow = null;
-            return;
-        }
 
         win.ShowQuickNote(barRect, bounds, dpi);
 
