@@ -612,6 +612,7 @@ public static bool IsFullscreenOnMonitor(IntPtr targetMonitor)
 | `Open*(N)` | Click Delete (`🗑`) & `string.IsNullOrWhiteSpace(body)` | Cancel timer; `DeleteNote(N)`; close `NoteWindow`; refresh Bar/List | `Closed` |
 | `Open*(N)` | Click Delete (`🗑`) & `!IsNullOrWhiteSpace(body)` | Show inline toolbar `Delete note? [Delete] [Cancel]` | `ConfirmDelete(N)` |
 | `OpenFocused(N)` | `Esc` pressed | `FlushNow(N)`; close `NoteWindow`; restore `prevForegroundHwnd`; if cursor outside Bar/List, hide all | `Closed` |
+| `OpenFocused(N)` | Click outside (window deactivates) | **Start a 5s grace timer; keep `NoteWindow` open (passive).** Re-focus within 5s cancels the close; on expiry `FlushNow(N)` + close. `Esc` / `×` remain IMMEDIATE. | `OpenFocused(N)` → `Closed` |
 
 ### 8.4 Quick-Note Editor (`QuickNoteSession` + `QuickNoteWindow` via Center `+`)
 | State | Event | Action | Next State |
