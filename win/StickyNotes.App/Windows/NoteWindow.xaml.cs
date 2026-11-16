@@ -81,7 +81,7 @@ public partial class NoteWindow : Window
             }
             catch (StickyCoreException ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Autosave failed ({ex.Status}): {ex.Message}");
+                System.Diagnostics.Trace.WriteLine($"Autosave failed ({ex.Status}): {ex.Message}");
             }
         };
         _autosaveTimer.Start();
@@ -107,6 +107,9 @@ public partial class NoteWindow : Window
     }
 
     public long NoteId => _session.NoteId;
+
+    /// <summary>True while the 5s click-outside grace timer is armed — coordinator keeps the bar but leaves this note open.</summary>
+    internal bool ClickOutsideGracePending => _clickOutsideTimer.IsEnabled;
 
     /// <summary>Raised when the window closes itself (flush completed). Parameter: session outcome.</summary>
     public event EventHandler<NoteWindowClosedEventArgs>? ClosedByUser;
@@ -279,7 +282,7 @@ public partial class NoteWindow : Window
             }
             catch (StickyCoreException ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Note flush-on-close failed ({ex.Status}): {ex.Message}");
+                System.Diagnostics.Trace.WriteLine($"Note flush-on-close failed ({ex.Status}): {ex.Message}");
                 outcome = NoteCloseOutcome.Saved; // text may be lost — treat as saved-dirty rather than crash
             }
         }

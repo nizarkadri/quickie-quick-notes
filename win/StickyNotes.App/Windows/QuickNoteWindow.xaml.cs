@@ -258,7 +258,7 @@ public partial class QuickNoteWindow : Window
         }
         catch (StickyCoreException ex)
         {
-            System.Diagnostics.Debug.WriteLine($"QuickNote commit failed ({ex.Status}): {ex.Message}");
+            System.Diagnostics.Trace.WriteLine($"QuickNote commit failed ({ex.Status}): {ex.Message}");
             outcome = QuickNoteOutcome.NothingToCommit;
         }
 

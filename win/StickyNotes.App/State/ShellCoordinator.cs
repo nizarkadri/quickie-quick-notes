@@ -37,6 +37,8 @@ public sealed class ShellCoordinator : IDisposable
 
     private NoteWindow? _noteWindow;       // max 1 open — opening a second flushes + replaces the first
     private QuickNoteWindow? _quickNoteWindow;
+    private DispatcherTimer? _idleTrimTimer;
+
     private nint _activeMonitor; // monitor of the pending/open reveal (last trigger entered)
     private DateTime _lastTickUtc;
     private bool _started;
@@ -102,6 +104,30 @@ public sealed class ShellCoordinator : IDisposable
         _tick.Tick += OnTick;
     }
 
+    /// <summary>30s-delayed one-shot idle trim: hides memory pressure without stuttering the 100ms hide animation or evicting the pre-created windows.</summary>
+    private void ScheduleIdleTrim()
+    {
+        if (_idleTrimTimer is null)
+        {
+            _idleTrimTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+            _idleTrimTimer.Tick += (_, _) =>
+            {
+                _idleTrimTimer!.Stop();
+                if (_disposed)
+                {
+                    return;
+                }
+
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                _ = EmptyWorkingSet(new IntPtr(-1)); // pseudo-handle to the current process
+            };
+        }
+
+        _idleTrimTimer.Stop();
+        _idleTrimTimer.Start();
+    }
+
     public BarStateMachine Machine { get; } = new();
 
     /// <summary>Open the database, create one TriggerWindow per monitor, and start the tick.</summary>
@@ -140,6 +166,7 @@ public sealed class ShellCoordinator : IDisposable
 
         _disposed = true;
         _tick.Stop();
+        _idleTrimTimer?.Stop();
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
 
         Machine.AppExit();
@@ -195,7 +222,11 @@ public sealed class ShellCoordinator : IDisposable
         UpdateTickState(); // wake the tick if the machine wants polling (DwellPending...)
     }
 
-    private void OnTriggerLeft(object? sender, TriggerMonitorEventArgs e) => Machine.TriggerLeft();
+    private void OnTriggerLeft(object? sender, TriggerMonitorEventArgs e)
+    {
+        Machine.TriggerLeft(); // Dwell may be cancelled → machine may go Hidden
+        UpdateTickState();
+    }
 
     private void OnDisplaySettingsChanged(object? sender, EventArgs e)
     {
@@ -282,6 +313,8 @@ public sealed class ShellCoordinator : IDisposable
 
     private void ShowBar(nint monitor)
     {
+        _idleTrimTimer?.Stop(); // a reveal in flight must not be interrupted by the deferred trim
+
         MonitorBounds? bounds = FindBounds(monitor) ?? FindBounds(_activeMonitor) ?? (_triggers.Count > 0 ? _triggers[0].Bounds : null);
         if (bounds is null)
         {
@@ -429,7 +462,7 @@ public sealed class ShellCoordinator : IDisposable
         }
         catch (StickyCoreException ex)
         {
-            System.Diagnostics.Debug.WriteLine($"ListAppendTargets failed ({ex.Status}): {ex.Message}");
+            System.Diagnostics.Trace.WriteLine($"ListAppendTargets failed ({ex.Status}): {ex.Message}");
             appendTargets = new List<NoteSummary>();
         }
 
@@ -731,16 +764,22 @@ public sealed class ShellCoordinator : IDisposable
     private void HideAll()
     {
         CloseQuickNote(); // commit-if-non-empty, like click-outside
-        CloseNoteWindow(); // flushes (empty new unpinned note is deleted)
+        if (_noteWindow is not null && _noteWindow.ClickOutsideGracePending && !_disposed)
+        {
+            // Human-approved 5s click-outside grace: leave the note open; its own timer flushes + closes it.
+            // (Skipped during Shutdown via _disposed so exit still flushes the note.)
+        }
+        else
+        {
+            CloseNoteWindow(); // flushes (empty new unpinned note is deleted)
+        }
+
         _openListAnchorTag = null;
         _list.CloseList();
         _tracker.SetVisible(false);
         _bar.HideBar();
 
-        // Idle trim: once fully hidden, return memory to the OS (GC + working-set emptying).
-        // Keeps the steady-state RSS under the <50 MB budget after big flushes/renders.
-        GC.Collect();
-        _ = EmptyWorkingSet(new IntPtr(-1)); // pseudo-handle to the current process
+        ScheduleIdleTrim();
     }
 
     [System.Runtime.InteropServices.DllImport("psapi.dll")]

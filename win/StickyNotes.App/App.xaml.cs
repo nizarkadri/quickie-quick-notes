@@ -107,7 +107,11 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"ShellCoordinator.Shutdown failed: {ex}");
+            // Release builds strip Debug.WriteLine — use Trace so the failure is always observable.
+            System.Diagnostics.Trace.WriteLine($"ShellCoordinator.Shutdown failed: {ex}");
+#if DEBUG
+            System.Diagnostics.Debug.Fail($"ShellCoordinator.Shutdown failed: {ex}");
+#endif
         }
 
         _coordinator = null;
@@ -171,7 +175,7 @@ public partial class App : Application
 
         if (!Shell_NotifyIconW(NIM_ADD, ref data))
         {
-            System.Diagnostics.Debug.WriteLine($"Shell_NotifyIconW(NIM_ADD) failed; error {Marshal.GetLastWin32Error()}.");
+            System.Diagnostics.Trace.WriteLine($"Shell_NotifyIconW(NIM_ADD) failed; error {Marshal.GetLastWin32Error()}.");
         }
 
         // V3 keeps lParam == the mouse message for WM_APP_TRAYICON callbacks.
