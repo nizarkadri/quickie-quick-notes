@@ -35,6 +35,8 @@ public sealed class ShellCoordinator : IDisposable
     private BarSnapshot? _lastSnapshot;
     private string? _openListAnchorTag; // anchor tag of the currently-open GroupListWindow ("groups-menu" | "group:{id}")
 
+    private NoteWindow? _noteWindow;       // max 1 open — opening a second flushes + replaces the first
+    private QuickNoteWindow? _quickNoteWindow;
     private nint _activeMonitor; // monitor of the pending/open reveal (last trigger entered)
     private DateTime _lastTickUtc;
     private bool _started;
@@ -44,17 +46,13 @@ public sealed class ShellCoordinator : IDisposable
     {
         _dbPath = dbPath ?? throw new ArgumentNullException(nameof(dbPath));
         _bar = new BarWindow();
-        _bar.QuickCaptureRequested += (_, _) => QuickCaptureRequested?.Invoke(this, EventArgs.Empty);
-        _bar.EditorFocused += (_, _) => Machine.EditorFocused();
-        _bar.EditorDeactivated += (_, _) => Machine.EditorDeactivated(
-            toExternalWindow: !Win32.IsOwnAppWindow(Win32.GetForegroundWindow()),
-            cursorInSurfaces: _tracker.IsCursorInside);
+        _bar.QuickCaptureRequested += (_, _) => OpenQuickNote();
         _bar.ChipActivated += OnChipActivated;
         _bar.ChipPinToggleRequested += OnChipPinToggleRequested;
 
         _list = new GroupListWindow();
         _list.NewNoteRequested += OnListNewNoteRequested;
-        _list.NoteClicked += id => OpenNoteRequested?.Invoke(this, id);
+        _list.NoteClicked += OnListNoteClicked;
         _list.GroupRowActivated += OnListGroupRowActivated;
         _list.GroupPinToggled += OnListGroupPinToggled;
         _list.GroupCreateCommitted += OnListGroupCreateCommitted;
@@ -70,12 +68,6 @@ public sealed class ShellCoordinator : IDisposable
     }
 
     public BarStateMachine Machine { get; } = new();
-
-    /// <summary>Raised when the user clicks '+' (Task 8 opens QuickNoteWindow; unused in Task 5).</summary>
-    public event EventHandler? QuickCaptureRequested;
-
-    /// <summary>Raised when a note chip/row is activated (Task 7 opens NoteWindow; unused in Task 6 — note is created/left alone).</summary>
-    public event EventHandler<long>? OpenNoteRequested;
 
     /// <summary>Open the database, create one TriggerWindow per monitor, and start the tick.</summary>
     public void Start()
@@ -127,6 +119,8 @@ public sealed class ShellCoordinator : IDisposable
         }
 
         _triggers.Clear();
+        CloseQuickNote();
+        CloseNoteWindow();
         _list.Close(); // triggers ForgetWindow via OnClosed
         _bar.Close();
         _tracker.Dispose();
@@ -262,7 +256,7 @@ public sealed class ShellCoordinator : IDisposable
         _tracker.SetVisible(true);
     }
 
-    /// <summary>Re-publish trigger + bar + (if open) group-list rects to the hit tracker.</summary>
+    /// <summary>Re-publish trigger + bar + (if open) flyout rects to the hit tracker.</summary>
     private void PublishSurfaces(double dpi)
     {
         var surfaces = new List<PxRect>();
@@ -284,8 +278,163 @@ public sealed class ShellCoordinator : IDisposable
             surfaces.Add(listRect);
         }
 
+        if (_noteWindow is not null && _noteWindow.TryGetPhysicalRect(out PxRect noteRect))
+        {
+            surfaces.Add(noteRect);
+        }
+
+        if (_quickNoteWindow is not null && _quickNoteWindow.TryGetPhysicalRect(out PxRect quickRect))
+        {
+            surfaces.Add(quickRect);
+        }
+
         _tracker.Dpi = dpi;
         _tracker.SetSurfaces(surfaces);
+    }
+
+    private (MonitorBounds Bounds, double Dpi, nint HMonitor) BarContext()
+    {
+        MonitorBounds bounds = _bar.CurrentBounds
+            ?? (_triggers.Count > 0
+                ? _triggers[0].Bounds
+                : new MonitorBounds(new PxRect(0, 0, 1920, 1080), new PxRect(0, 0, 1920, 1040)));
+        nint hMonitor = _bar.HMonitor != nint.Zero ? _bar.HMonitor : (_triggers.Count > 0 ? _triggers[0].HMonitor : nint.Zero);
+        double dpi = Win32.DpiScaleOf(hMonitor) ?? VisualTreeHelper.GetDpi(_bar).DpiScaleX;
+        return (bounds, dpi, hMonitor);
+    }
+
+    // ------------------------------------------------------------------ note window (max 1 open)
+
+    private void OpenNote(long noteId, Note? existingNote, bool createdThisOpen, PxRect anchorRect, bool anchorIsHorizontalBarItem, bool focused)
+    {
+        if (_core is null)
+        {
+            return;
+        }
+
+        CloseNoteWindow(); // max 1 open — opening a second flushes + replaces the first
+
+        Note note = existingNote ?? _core.GetNote(noteId, markOpened: true);
+
+        (MonitorBounds bounds, double dpi, _) = BarContext();
+        var win = new NoteWindow(_core, note, createdThisOpen);
+        win.ClosedByUser += OnNoteWindowClosed;
+        _noteWindow = win;
+        win.ShowNote(anchorRect, bounds, dpi, anchorIsHorizontalBarItem, focused);
+
+        Machine.EditorFocused();
+        PublishSurfaces(dpi);
+    }
+
+    private void CloseNoteWindow()
+    {
+        NoteWindow? win = _noteWindow;
+        if (win is null)
+        {
+            return;
+        }
+
+        _noteWindow = null; // before closing: the ClosedByUser handler would see the stale reference otherwise
+        win.ClosedByUser -= OnNoteWindowClosed;
+        win.FlushAndClose(); // raises nothing (unsubscribed); flush happens inside
+    }
+
+    private void OnNoteWindowClosed(object? sender, NoteWindowClosedEventArgs e)
+    {
+        if (sender is NoteWindow win && ReferenceEquals(win, _noteWindow))
+        {
+            _noteWindow = null;
+        }
+
+        Machine.EditorDeactivated(
+            toExternalWindow: !Win32.IsOwnAppWindow(Win32.GetForegroundWindow()),
+            cursorInSurfaces: _tracker.IsCursorInside);
+        RefreshViews();
+
+        double dpi = _bar.HMonitor != nint.Zero ? Win32.DpiScaleOf(_bar.HMonitor) ?? 1.0 : 1.0;
+        PublishSurfaces(dpi);
+    }
+
+    // ------------------------------------------------------------------ quick note window
+
+    private void OpenQuickNote()
+    {
+        if (_core is null)
+        {
+            return;
+        }
+
+        if (_quickNoteWindow is not null)
+        {
+            _quickNoteWindow.FocusBody(); // already open: just refocus, don't stack a second
+            return;
+        }
+
+        (MonitorBounds bounds, double dpi, _) = BarContext();
+        var win = new QuickNoteWindow(_core);
+        win.LoadTargets(_lastSnapshot ?? _core.GetBarSnapshot());
+        win.QuickNoteClosed += OnQuickNoteClosed;
+        _quickNoteWindow = win;
+
+        if (!_bar.TryGetPhysicalRect(out PxRect barRect))
+        {
+            // Bar fell over between '+' click and open — bail out cleanly.
+            _quickNoteWindow = null;
+            return;
+        }
+
+        win.ShowQuickNote(barRect, bounds, dpi);
+
+        Machine.EditorFocused();
+        PublishSurfaces(dpi);
+    }
+
+    private void CloseQuickNote()
+    {
+        QuickNoteWindow? win = _quickNoteWindow;
+        if (win is null)
+        {
+            return;
+        }
+
+        _quickNoteWindow = null;
+        win.QuickNoteClosed -= OnQuickNoteClosed;
+        win.CloseProgrammatically(QuickNoteClose.ClickOutside); // commit-if-non-empty semantics for bar-hide / exit
+    }
+
+    private void OnQuickNoteClosed(object? sender, QuickNoteClosedEventArgs e)
+    {
+        if (sender is QuickNoteWindow win && ReferenceEquals(win, _quickNoteWindow))
+        {
+            _quickNoteWindow = null;
+        }
+
+        Machine.EditorDeactivated(
+            toExternalWindow: !Win32.IsOwnAppWindow(Win32.GetForegroundWindow()),
+            cursorInSurfaces: _tracker.IsCursorInside);
+        RefreshViews(); // appended/committed note moves to #1 in Recents
+
+        double dpi = _bar.HMonitor != nint.Zero ? Win32.DpiScaleOf(_bar.HMonitor) ?? 1.0 : 1.0;
+        PublishSurfaces(dpi);
+    }
+
+    /// <summary>Refresh bar + (if open) sync the group list after data changed.</summary>
+    private void RefreshViews()
+    {
+        RefreshBar();
+
+        if (_list.Mode == GroupListMode.OpenGroup && _list.CurrentGroupId is long groupId)
+        {
+            GroupSummary? group = FindGroup(groupId);
+            if (group is not null)
+            {
+                _list.RefreshGroup(group, GroupNotesSorted(groupId));
+            }
+        }
+        else if (_list.Mode == GroupListMode.OpenAllGroups)
+        {
+            _list.RefreshAllGroups(GroupsSorted());
+        }
     }
 
     // ------------------------------------------------------------------ bar & group list
@@ -305,7 +454,10 @@ public sealed class ShellCoordinator : IDisposable
         else if (tag.StartsWith("note:", StringComparison.Ordinal)
                  && long.TryParse(tag.AsSpan("note:".Length), out long noteId))
         {
-            OpenNoteRequested?.Invoke(this, noteId); // Task 7 opens NoteWindow
+            if (_bar.TryGetChipRect(tag, out PxRect anchor))
+            {
+                OpenNote(noteId, existingNote: null, createdThisOpen: false, anchor, anchorIsHorizontalBarItem: true, focused: false);
+            }
         }
     }
 
@@ -380,28 +532,20 @@ public sealed class ShellCoordinator : IDisposable
         return _bar.TryGetChipRect(anchorTag, out anchorRect);
     }
 
-    private void OnListNewNoteRequested(long groupId)
+    private void OnListNewNoteRequested(long groupId, PxRect anchorRect)
     {
         if (_core is null)
         {
             return;
         }
 
-        // Task 6: create + refresh. Opening the NoteWindow is Task 7 (raise-only stub follows).
         Note created = _core.CreateNote(groupId, "");
-        _lastSnapshot = _core.GetBarSnapshot();
-        _bar.Rebuild(_lastSnapshot);
-        if (_list.Mode == GroupListMode.OpenGroup && _list.CurrentGroupId == groupId)
-        {
-            GroupSummary? group = FindGroup(groupId);
-            if (group is not null)
-            {
-                _list.RefreshGroup(group, GroupNotesSorted(groupId));
-            }
-        }
-
-        OpenNoteRequested?.Invoke(this, created.Id);
+        RefreshViews();
+        OpenNote(created.Id, created, createdThisOpen: true, anchorRect, anchorIsHorizontalBarItem: false, focused: true);
     }
+
+    private void OnListNoteClicked(long noteId, PxRect anchorRect) =>
+        OpenNote(noteId, existingNote: null, createdThisOpen: false, anchorRect, anchorIsHorizontalBarItem: false, focused: false);
 
     private void OnListGroupRowActivated(long groupId)
     {
@@ -427,11 +571,7 @@ public sealed class ShellCoordinator : IDisposable
         }
 
         _core.CreateGroup(name, pinned: true); // §10: new groups are pinned by default
-        RefreshBar();
-        if (_list.Mode == GroupListMode.OpenAllGroups)
-        {
-            _list.RefreshAllGroups(GroupsSorted());
-        }
+        RefreshViews();
     }
 
     private void OnListGroupRenameCommitted(long groupId, string name)
@@ -442,15 +582,7 @@ public sealed class ShellCoordinator : IDisposable
         }
 
         _core.RenameGroup(groupId, name);
-        RefreshBar();
-        if (_list.Mode == GroupListMode.OpenGroup && _list.CurrentGroupId == groupId)
-        {
-            GroupSummary? group = FindGroup(groupId);
-            if (group is not null)
-            {
-                _list.RefreshGroup(group, GroupNotesSorted(groupId));
-            }
-        }
+        RefreshViews();
     }
 
     private void OnListGroupDeleteConfirmed(long groupId)
@@ -536,11 +668,13 @@ public sealed class ShellCoordinator : IDisposable
 
     private void HideAll()
     {
+        CloseQuickNote(); // commit-if-non-empty, like click-outside
+        CloseNoteWindow(); // flushes (empty new unpinned note is deleted)
         _openListAnchorTag = null;
         _list.CloseList();
         _tracker.SetVisible(false);
         _bar.HideBar();
-        // NoteWindow/QuickNoteWindow are closed/flushed here in Tasks 7/8.
+        RefreshBar();
     }
 
     // ------------------------------------------------------------------ monitors

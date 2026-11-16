@@ -52,14 +52,8 @@ public partial class BarWindow : Window
 
     private readonly Dictionary<string, Button> _chips = new();
 
-    /// <summary>Raised when the user clicks the centered '+' (Task 8 wires quick capture; Task 5 spike only).</summary>
+    /// <summary>Raised when the user clicks the centered '+' (coordinator opens the real QuickNoteWindow).</summary>
     public event EventHandler? QuickCaptureRequested;
-
-    /// <summary>Raised when an editor (the spike TextBox) takes keyboard focus.</summary>
-    public event EventHandler? EditorFocused;
-
-    /// <summary>Raised when an editor loses keyboard focus (deactivation).</summary>
-    public event EventHandler? EditorDeactivated;
 
     protected override void OnSourceInitialized(EventArgs e)
     {
@@ -70,8 +64,6 @@ public partial class BarWindow : Window
         FocusHelper.InstallNonActivatingHook(hwnd);
         FocusHelper.ApplyRoundedCorners(hwnd);
         // NOTE: HMonitor is set by ShowOnMonitor(bounds, hMonitor, dpi) — never derive it from an unpositioned HWND (FS1 trap).
-
-        Deactivated += OnDeactivated;
     }
 
     /// <summary>Rebuild the left rail (pinned rail: PinnedItems by pinned_at_ms ASC + trailing 'Groups ▾') and the recents panel (up to 5).</summary>
@@ -254,40 +246,8 @@ public partial class BarWindow : Window
         return true;
     }
 
-    private void OnPlusClick(object sender, RoutedEventArgs e)
-    {
-        // --- Task 5 focus-spike: hand focus to a temporary activating TextBox. ---
-        // Task 8 replaces SpikeHost with the real QuickNoteWindow.
-        SpikeHost.Visibility = Visibility.Visible;
-        FocusHelper.BeginInlineEdit(this, SpikeBox);
-        EditorFocused?.Invoke(this, EventArgs.Empty);
+    private void OnPlusClick(object sender, RoutedEventArgs e) =>
         QuickCaptureRequested?.Invoke(this, EventArgs.Empty);
-    }
-
-    private void OnSpikeBoxKeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Escape || e.Key == Key.Enter)
-        {
-            EndSpike(commit: e.Key == Key.Enter);
-            e.Handled = true;
-        }
-    }
-
-    private void EndSpike(bool commit)
-    {
-        if (commit)
-        {
-            // Spike only: no persistence. Task 8 commits via StickyCoreClient.QuickCapture.
-            SpikeBox.Clear();
-        }
-
-        SpikeHost.Visibility = Visibility.Collapsed;
-        FocusHelper.EndInlineEdit(this, SpikeBox, restorePreviousForeground: true);
-        EditorDeactivated?.Invoke(this, EventArgs.Empty);
-    }
-
-    private void OnDeactivated(object? sender, EventArgs e) =>
-        EditorDeactivated?.Invoke(this, EventArgs.Empty);
 
     protected override void OnClosed(EventArgs e)
     {

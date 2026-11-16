@@ -18,18 +18,33 @@ public enum QuickNoteOutcome
 }
 
 /// <summary>
-/// Task 1 stub. Pure HWND-free quick-capture session — Standalone/Group/Append
-/// commit, empty no-op and Esc discard land in Task 8 (blueprint §8.4).
+/// Pure HWND-free quick-note capture session (blueprint §8.4, contract pinned by QuickNoteSessionTests).
+/// Ctrl+Enter / click-outside commits if text is non-whitespace; Escape always discards without writing.
 /// </summary>
 public sealed class QuickNoteSession
 {
     private readonly IStickyCoreClient _core;
 
-    public QuickNoteSession(IStickyCoreClient core) => _core = core;
+    public QuickNoteSession(IStickyCoreClient core) =>
+        _core = core ?? throw new ArgumentNullException(nameof(core));
 
-    public string Text { get; set; } = "";
+    public string Text { get; set; } = string.Empty;
 
     public QuickCaptureTarget Target { get; set; } = QuickCaptureTarget.Standalone();
 
-    public QuickNoteOutcome Close(QuickNoteClose reason) => throw new NotImplementedException();
+    public QuickNoteOutcome Close(QuickNoteClose reason)
+    {
+        if (reason == QuickNoteClose.Escape)
+        {
+            return QuickNoteOutcome.Discarded; // panic-cancel: never writes
+        }
+
+        if (string.IsNullOrWhiteSpace(Text))
+        {
+            return QuickNoteOutcome.NothingToCommit;
+        }
+
+        _core.QuickCapture(Text, Target);
+        return QuickNoteOutcome.Committed;
+    }
 }

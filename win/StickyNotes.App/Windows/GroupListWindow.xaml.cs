@@ -40,11 +40,11 @@ public partial class GroupListWindow : Window
     private InlineEditPurpose _editPurpose = InlineEditPurpose.None;
     private bool _editing;
 
-    /// <summary>The '+ New Note' permanent row (OpenGroup) was clicked.</summary>
-    public event Action<long>? NewNoteRequested;
+    /// <summary>The '+ New Note' permanent row (OpenGroup) was clicked. Rect = screen rect of the row (note window anchor).</summary>
+    public event Action<long, PxRect>? NewNoteRequested;
 
-    /// <summary>A note row was clicked (Task 7 opens NoteWindow).</summary>
-    public event Action<long>? NoteClicked;
+    /// <summary>A note row was clicked (Task 7 opens NoteWindow). Rect = screen rect of the row.</summary>
+    public event Action<long, PxRect>? NoteClicked;
 
     /// <summary>A group row in OpenAllGroups was clicked — switch to that group's list.</summary>
     public event Action<long>? GroupRowActivated;
@@ -197,7 +197,7 @@ public partial class GroupListWindow : Window
             Cursor = Cursors.Hand,
             Padding = new Thickness(10, 0, 10, 0),
         };
-        row.Click += (_, _) => NoteClicked?.Invoke(note.Id);
+        row.Click += (_, _) => NoteClicked?.Invoke(note.Id, RectOf(row));
 
         var content = new Grid();
         content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -419,8 +419,19 @@ public partial class GroupListWindow : Window
     {
         if (_group is not null)
         {
-            NewNoteRequested?.Invoke(_group.Id);
+            NewNoteRequested?.Invoke(_group.Id, RectOf(NewNoteButton));
         }
+    }
+
+    private PxRect RectOf(FrameworkElement element)
+    {
+        Point p = element.PointToScreen(new Point(0, 0));
+        double dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
+        return new PxRect(
+            (int)Math.Round(p.X),
+            (int)Math.Round(p.Y),
+            (int)Math.Round(element.RenderSize.Width * dpi),
+            (int)Math.Round(element.RenderSize.Height * dpi));
     }
 
     protected override void OnClosed(EventArgs e)

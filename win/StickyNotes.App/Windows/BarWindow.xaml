@@ -61,23 +61,6 @@
                             VerticalAlignment="Center" />
             </ScrollViewer>
 
-            <!-- Focus-handoff spike overlay (Task 5): temporary activating TextBox;
-                 Task 8 replaces this with the real QuickNoteWindow. -->
-            <Border x:Name="SpikeHost"
-                    Grid.Column="0"
-                    Grid.ColumnSpan="3"
-                    Visibility="Collapsed"
-                    Background="{StaticResource BarBackground}"
-                    CornerRadius="8"
-                    Padding="8,4">
-                <TextBox x:Name="SpikeBox"
-                         FontSize="13"
-                         Foreground="{StaticResource TextPrimary}"
-                         Background="#22FFFFFF"
-                         BorderThickness="0"
-                         CaretBrush="{StaticResource TextPrimary}"
-                         KeyDown="OnSpikeBoxKeyDown" />
-            </Border>
         </Grid>
     </Border>
 </Window>
