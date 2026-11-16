@@ -16,7 +16,8 @@ namespace StickyNotes.App.Windows;
 /// passively without stealing focus (SWP_NOACTIVATE) otherwise. Backed by
 /// <see cref="NoteEditSession"/>: 350ms trailing-debounce autosave; close always flushes;
 /// delete of an empty just-created unpinned note happens inside the session.
-/// Esc/click-outside: flush + close; Esc also restores the previous foreground window.
+/// Esc / close button / delete: immediate flush + close (Esc also restores the previous foreground).
+/// Click-outside: 5s grace (§8.3) — clicking back in cancels the pending close.
 /// </summary>
 public partial class NoteWindow : Window
 {
@@ -26,7 +27,10 @@ public partial class NoteWindow : Window
     private readonly IStickyCoreClient _core;
     private readonly NoteEditSession _session;
     private readonly string? _groupName;
+    private const int ClickOutsideGraceMs = 5000;
+
     private readonly DispatcherTimer _autosaveTimer;
+    private readonly DispatcherTimer _clickOutsideTimer = new();
     private bool _closed;
     private bool _pinned;
 
@@ -82,8 +86,24 @@ public partial class NoteWindow : Window
         };
         _autosaveTimer.Start();
 
+        _clickOutsideTimer.Interval = TimeSpan.FromMilliseconds(ClickOutsideGraceMs);
+        _clickOutsideTimer.Tick += (_, _) =>
+        {
+            _clickOutsideTimer.Stop();
+            if (!_closed)
+            {
+                CloseInternal(restoreForeground: false, raiseEvent: true);
+            }
+        };
+
         Deactivated += OnDeactivated;
-        Activated += (_, _) => EditorActivated?.Invoke(this, EventArgs.Empty);
+        Activated += OnActivated;
+    }
+
+    private void OnActivated(object? sender, EventArgs e)
+    {
+        _clickOutsideTimer.Stop(); // a click back in cancels the pending close
+        EditorActivated?.Invoke(this, EventArgs.Empty);
     }
 
     public long NoteId => _session.NoteId;
@@ -224,10 +244,15 @@ public partial class NoteWindow : Window
 
     private void OnDeactivated(object? sender, EventArgs e)
     {
-        // Click-outside (or hand-off to another app window): flush + close. Never restore focus here —
-        // the user chose where it goes.
+        if (_closed)
+        {
+            return;
+        }
+
+        // Click-outside (or hand-off to another app window): 5s grace — the user may click straight back in.
         EditorDeactivated?.Invoke(this, EventArgs.Empty);
-        CloseInternal(restoreForeground: false, raiseEvent: true);
+        _clickOutsideTimer.Stop();
+        _clickOutsideTimer.Start();
     }
 
     private NoteCloseOutcome CloseInternal(bool restoreForeground, bool raiseEvent, bool alreadyDeleted = false)
@@ -238,6 +263,7 @@ public partial class NoteWindow : Window
         }
 
         _closed = true;
+        _clickOutsideTimer.Stop();
         _autosaveTimer.Stop();
 
         NoteCloseOutcome outcome = NoteCloseOutcome.Unchanged;
@@ -277,6 +303,7 @@ public partial class NoteWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        _clickOutsideTimer.Stop();
         _autosaveTimer.Stop();
         FocusHelper.ForgetWindow(new WindowInteropHelper(this).Handle);
         base.OnClosed(e);
