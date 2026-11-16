@@ -41,12 +41,12 @@ Record the result (and the Windows build) next to each item.
 - [x] Empty editor closed any way writes nothing. **(verified 2026-11-16)**
 
 ## Task 9 - Resilience
-- [ ] Change display resolution/scale: triggers reposition, nothing is stranded off-screen, no crash.
-- [ ] Unplug and replug a second monitor with the bar open.
-- [ ] Mixed DPI (e.g. 150% laptop + 100% external): trigger, bar, list and note windows are correctly placed on each.
-- [ ] Launching a second copy exits cleanly (single instance).
-- [ ] Exit from tray with unsaved text: text is saved on next launch.
-- [ ] Sleep/wake and lock/unlock: the trigger still works.
+- [x] Change display resolution/scale: triggers reposition, nothing is stranded off-screen, no crash. **(verified 2026-11-16)**
+- [x] Unplug and replug a second monitor with the bar open. **(verified 2026-11-16, bar open AND hidden)**
+- [x] Mixed DPI (e.g. 150% laptop + 100% external): trigger, bar, list and note windows are correctly placed on each. **(verified 2026-11-16)**
+- [x] Launching a second copy exits cleanly (single instance). **(verified 2026-11-16)**
+- [x] Exit from tray with unsaved text: text is saved on next launch. **(verified 2026-11-16)**
+- [x] Sleep/wake and lock/unlock: the trigger still works. **(verified 2026-11-16)**
 
 ## Final end-to-end gate (Task 10)
 - [ ] `scripts\build.ps1` then `scripts\test.ps1` on a clean checkout: all green.
