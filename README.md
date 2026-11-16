@@ -99,14 +99,14 @@ See [`docs/TESTING.md`](docs/TESTING.md) for the task-by-task test/gate map.
 
 **v1.0** (this release) — everything above.
 
-**v0.2 candidates** (deferred — see `PROGRESS.md` for the analysis):
+**v0.2.0** — planned; see [`docs/ROADMAP-v0.2.0.md`](docs/ROADMAP-v0.2.0.md) for the full spec:
 - Move an existing note into a new/existing group
 - Explicit note titles
-- Larger hover target (needs a design answer — the 100×4 trigger geometry is pinned by tests)
+- Larger hover target (test-safe approach)
 - Hover a note to preview it
 - Hover a group to open its list (revisits the click-to-open design)
 
-**Out of scope for v1:** active-window detection / context-aware bar, app-directory mapping, macOS UI, cloud sync, search UI.
+**Out of scope:** active-window detection / context-aware bar, app-directory mapping, macOS UI, cloud sync, search UI.
 
 ---
 
