@@ -51,7 +51,7 @@ Parallelizable: **only Task 2 and Task 4**, both after Task 1.
 | 6 | done | AUTOMATED GATE PASSED 2026-11-15 (regression 59/59; no automated tests) | a256578 + 2d48c42 + f12581e | MANUAL signed off 2026-11-16; QA PASS (stale-_group crash fixed f12581e) | n/a |
 | 7+8 | done | AUTOMATED GATE PASSED 2026-11-16 (Task=3\|4\|5\|7\|8 77/77) | c7a8274 + 89785b3 | Dev-2 re-review 9/9 PASS; MANUAL signed off 2026-11-16 (all pass) | n/a |
 | 7+8 | todo | — | — | — | — |
-| 9 | todo | — | — | — | — |
+| 9 | building | — | — | stickyDev-3 (resilience) | — |
 | 10 | todo | — | — | — | — |
 
 ## Decisions
