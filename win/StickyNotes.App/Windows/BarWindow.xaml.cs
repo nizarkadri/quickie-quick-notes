@@ -1,10 +1,15 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
+using StickyNotes.App.Core;
 using StickyNotes.App.Interop;
 
 namespace StickyNotes.App.Windows;
@@ -34,6 +39,19 @@ public partial class BarWindow : Window
 
     public nint HMonitor { get; private set; }
 
+    /// <summary>Physical bounds of the monitor this bar is shown on (set by ShowOnMonitor).</summary>
+    public MonitorBounds? CurrentBounds { get; private set; }
+
+    // ------------------------------------------------------------------ chips
+
+    /// <summary>A left-rail or recents chip (or the trailing 'Groups ▾' button) was activated. Tag: "group:{id}" | "note:{id}" | "groups-menu".</summary>
+    public event EventHandler<BarChipEventArgs>? ChipActivated;
+
+    /// <summary>Right-click on a chip — toggle pin. Same tag grammar as <see cref="ChipActivated"/>.</summary>
+    public event EventHandler<BarChipEventArgs>? ChipPinToggleRequested;
+
+    private readonly Dictionary<string, Button> _chips = new();
+
     /// <summary>Raised when the user clicks the centered '+' (Task 8 wires quick capture; Task 5 spike only).</summary>
     public event EventHandler? QuickCaptureRequested;
 
@@ -56,6 +74,107 @@ public partial class BarWindow : Window
         Deactivated += OnDeactivated;
     }
 
+    /// <summary>Rebuild the left rail (pinned rail: PinnedItems by pinned_at_ms ASC + trailing 'Groups ▾') and the recents panel (up to 5).</summary>
+    public void Rebuild(BarSnapshot snapshot)
+    {
+        _chips.Clear();
+
+        PinnedPanel.Children.Clear();
+        foreach (PinnedItem item in snapshot.PinnedItems)
+        {
+            if (item.Group is not null)
+            {
+                PinnedPanel.Children.Add(BuildChip("group:" + item.Group.Id, item.Group.Name, strikePinned: false));
+            }
+            else if (item.Note is not null)
+            {
+                PinnedPanel.Children.Add(BuildChip("note:" + item.Note.Id, item.Note.TitlePreview, strikePinned: true));
+            }
+        }
+
+        PinnedPanel.Children.Add(BuildChip("groups-menu", "Groups ▾", strikePinned: false, isMenu: true));
+
+        RecentPanel.Children.Clear();
+        foreach (NoteSummary note in snapshot.RecentNotes.Take(5))
+        {
+            if (note.IsPinned)
+            {
+                continue; // standalone pinned notes already live in the rail — never duplicate
+            }
+
+            RecentPanel.Children.Add(BuildChip("note:" + note.Id, note.TitlePreview, strikePinned: false));
+        }
+    }
+
+    /// <summary>Physical-pixel rect of the chip with the given tag; default when the chip doesn't exist or the bar is hidden.</summary>
+    public bool TryGetChipRect(string tag, out PxRect rect)
+    {
+        rect = default;
+        if (Visibility != Visibility.Visible)
+        {
+            return false;
+        }
+
+        if (!_chips.TryGetValue(tag, out Button? chip))
+        {
+            return false;
+        }
+
+        var root = (FrameworkElement)chip;
+        Point topLeft = root.PointToScreen(new Point(0, 0));
+        double dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
+        int x = (int)Math.Round(topLeft.X);
+        int y = (int)Math.Round(topLeft.Y);
+        // PointToScreen already returns PHYSICAL pixels; rescale the size from DIPs by this window's DPI.
+        int w = (int)Math.Round(root.RenderSize.Width * dpi);
+        int h = (int)Math.Round(root.RenderSize.Height * dpi);
+        rect = new PxRect(x, y, w, h);
+        return true;
+    }
+
+    private Button BuildChip(string tag, string label, bool strikePinned, bool isMenu = false)
+    {
+        var chip = new Button
+        {
+            Tag = tag,
+            Height = 30,
+            Padding = new Thickness(10, 0, 10, 0),
+            Margin = new Thickness(0, 0, 4, 0),
+            Background = new SolidColorBrush(isMenu ? System.Windows.Media.Color.FromArgb(0x38, 0x60, 0xA0, 0xE0) : System.Windows.Media.Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF)),
+            BorderThickness = new Thickness(0),
+            Cursor = System.Windows.Input.Cursors.Hand,
+            ToolTip = label,
+        };
+
+        var content = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        content.Children.Add(new TextBlock
+        {
+            Text = label,
+            Foreground = (Brush)Application.Current.Resources["TextPrimary"],
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            MaxWidth = 180,
+        });
+
+        if (strikePinned)
+        {
+            content.Children.Add(new TextBlock
+            {
+                Text = " 📌",
+                FontSize = 10,
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+        }
+
+        chip.Content = content;
+        chip.Click += (_, _) => ChipActivated?.Invoke(this, new BarChipEventArgs(tag));
+        chip.MouseRightButtonUp += (_, _) => ChipPinToggleRequested?.Invoke(this, new BarChipEventArgs(tag));
+
+        _chips[tag] = chip;
+        return chip;
+    }
+
     /// <summary>Position the bar on the given monitor and play the 140ms slide-in (GPU TranslateTransform).</summary>
     public void ShowOnMonitor(MonitorBounds bounds, nint hMonitor, double dpi)
     {
@@ -67,6 +186,7 @@ public partial class BarWindow : Window
         Height = rect.Height / dpi;
 
         HMonitor = hMonitor;
+        CurrentBounds = bounds;
         int token = ++_visibilityToken; // invalidate any pending hide-completion
 
         double startDipY = -(rect.Height / dpi); // DIP transform — never physical px
@@ -174,4 +294,12 @@ public partial class BarWindow : Window
         FocusHelper.ForgetWindow(new WindowInteropHelper(this).Handle);
         base.OnClosed(e);
     }
+}
+
+public sealed class BarChipEventArgs : EventArgs
+{
+    public BarChipEventArgs(string tag) => Tag = tag;
+
+    /// <summary>"group:{id}" | "note:{id}" | "groups-menu".</summary>
+    public string Tag { get; }
 }

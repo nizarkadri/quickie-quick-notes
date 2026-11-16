@@ -29,7 +29,11 @@ public sealed class ShellCoordinator : IDisposable
 
     private readonly List<TriggerWindow> _triggers = new();
     private readonly BarWindow _bar;
+    private readonly GroupListWindow _list;
+
     private StickyCoreClient? _core;
+    private BarSnapshot? _lastSnapshot;
+    private string? _openListAnchorTag; // anchor tag of the currently-open GroupListWindow ("groups-menu" | "group:{id}")
 
     private nint _activeMonitor; // monitor of the pending/open reveal (last trigger entered)
     private DateTime _lastTickUtc;
@@ -45,6 +49,21 @@ public sealed class ShellCoordinator : IDisposable
         _bar.EditorDeactivated += (_, _) => Machine.EditorDeactivated(
             toExternalWindow: !Win32.IsOwnAppWindow(Win32.GetForegroundWindow()),
             cursorInSurfaces: _tracker.IsCursorInside);
+        _bar.ChipActivated += OnChipActivated;
+        _bar.ChipPinToggleRequested += OnChipPinToggleRequested;
+
+        _list = new GroupListWindow();
+        _list.NewNoteRequested += OnListNewNoteRequested;
+        _list.NoteClicked += id => OpenNoteRequested?.Invoke(this, id);
+        _list.GroupRowActivated += OnListGroupRowActivated;
+        _list.GroupPinToggled += OnListGroupPinToggled;
+        _list.GroupCreateCommitted += OnListGroupCreateCommitted;
+        _list.GroupRenameCommitted += OnListGroupRenameCommitted;
+        _list.GroupDeleteConfirmed += OnListGroupDeleteConfirmed;
+        _list.InlineEditStarted += (_, _) => Machine.EditorFocused();
+        _list.InlineEditEnded += (_, _) => Machine.EditorDeactivated(
+            toExternalWindow: !Win32.IsOwnAppWindow(Win32.GetForegroundWindow()),
+            cursorInSurfaces: _tracker.IsCursorInside);
 
         _tick = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(TickIntervalMs) };
         _tick.Tick += OnTick;
@@ -54,6 +73,9 @@ public sealed class ShellCoordinator : IDisposable
 
     /// <summary>Raised when the user clicks '+' (Task 8 opens QuickNoteWindow; unused in Task 5).</summary>
     public event EventHandler? QuickCaptureRequested;
+
+    /// <summary>Raised when a note chip/row is activated (Task 7 opens NoteWindow; unused in Task 6 — note is created/left alone).</summary>
+    public event EventHandler<long>? OpenNoteRequested;
 
     /// <summary>Open the database, create one TriggerWindow per monitor, and start the tick.</summary>
     public void Start()
@@ -66,8 +88,12 @@ public sealed class ShellCoordinator : IDisposable
         _started = true;
         _core = new StickyCoreClient(_dbPath);
 
-        // Pre-create the HWND hidden (Visibility.Hidden) without ever showing the bar.
+        // Pre-create the HWNDs hidden (Visibility.Hidden) without ever showing the bar.
         _ = new WindowInteropHelper(_bar).EnsureHandle();
+        _ = new WindowInteropHelper(_list).EnsureHandle();
+
+        // Prime the bar with real data so the reveal path never renders empty chips.
+        RefreshBar();
 
         RebuildTriggers();
 
@@ -101,6 +127,7 @@ public sealed class ShellCoordinator : IDisposable
         }
 
         _triggers.Clear();
+        _list.Close(); // triggers ForgetWindow via OnClosed
         _bar.Close();
         _tracker.Dispose();
         _core?.Dispose();
@@ -231,6 +258,13 @@ public sealed class ShellCoordinator : IDisposable
         double dpi = Win32.DpiScaleOf(monitor) ?? VisualTreeHelper.GetDpi(_bar).DpiScaleX;
         _bar.ShowOnMonitor(bounds, monitor, dpi);
 
+        PublishSurfaces(dpi);
+        _tracker.SetVisible(true);
+    }
+
+    /// <summary>Re-publish trigger + bar + (if open) group-list rects to the hit tracker.</summary>
+    private void PublishSurfaces(double dpi)
+    {
         var surfaces = new List<PxRect>();
         if (_bar.TryGetPhysicalRect(out PxRect barRect))
         {
@@ -245,13 +279,265 @@ public sealed class ShellCoordinator : IDisposable
             }
         }
 
+        if (_list.TryGetPhysicalRect(out PxRect listRect))
+        {
+            surfaces.Add(listRect);
+        }
+
         _tracker.Dpi = dpi;
         _tracker.SetSurfaces(surfaces);
-        _tracker.SetVisible(true);
     }
+
+    // ------------------------------------------------------------------ bar & group list
+
+    private void OnChipActivated(object? sender, Windows.BarChipEventArgs e)
+    {
+        string tag = e.Tag;
+        if (tag == "groups-menu")
+        {
+            ToggleList("groups-menu", openAllGroups: true, groupId: null);
+        }
+        else if (tag.StartsWith("group:", StringComparison.Ordinal)
+                 && long.TryParse(tag.AsSpan("group:".Length), out long groupId))
+        {
+            ToggleList(tag, openAllGroups: false, groupId);
+        }
+        else if (tag.StartsWith("note:", StringComparison.Ordinal)
+                 && long.TryParse(tag.AsSpan("note:".Length), out long noteId))
+        {
+            OpenNoteRequested?.Invoke(this, noteId); // Task 7 opens NoteWindow
+        }
+    }
+
+    private void OnChipPinToggleRequested(object? sender, Windows.BarChipEventArgs e)
+    {
+        string tag = e.Tag;
+        if (tag.StartsWith("group:", StringComparison.Ordinal)
+            && long.TryParse(tag.AsSpan("group:".Length), out long groupId))
+        {
+            ToggleGroupPinned(groupId);
+        }
+        else if (tag.StartsWith("note:", StringComparison.Ordinal)
+                 && long.TryParse(tag.AsSpan("note:".Length), out long noteId))
+        {
+            ToggleNotePinned(noteId);
+        }
+    }
+
+    private void ToggleList(string anchorTag, bool openAllGroups, long? groupId)
+    {
+        if (_openListAnchorTag == anchorTag)
+        {
+            CloseList();
+            return;
+        }
+
+        if (!TryGetAnchorAndBounds(anchorTag, out PxRect anchorRect, out MonitorBounds bounds, out double dpi))
+        {
+            return; // bar hidden — nothing to anchor to
+        }
+
+        if (openAllGroups)
+        {
+            _list.ShowAllGroups(GroupsSorted());
+        }
+        else if (groupId.HasValue)
+        {
+            GroupSummary? group = FindGroup(groupId.Value);
+            if (group is null)
+            {
+                return;
+            }
+
+            _list.ShowGroup(group, GroupNotesSorted(groupId.Value));
+        }
+
+        _list.PositionAndShow(anchorRect, bounds, dpi);
+        _openListAnchorTag = anchorTag;
+        PublishSurfaces(dpi);
+    }
+
+    private void CloseList()
+    {
+        if (_openListAnchorTag is null)
+        {
+            return;
+        }
+
+        _list.CloseList();
+        _openListAnchorTag = null;
+        double dpi = _bar.CurrentBounds is not null && _bar.HMonitor != nint.Zero
+            ? Win32.DpiScaleOf(_bar.HMonitor) ?? 1.0
+            : 1.0;
+        PublishSurfaces(dpi);
+    }
+
+    private bool TryGetAnchorAndBounds(string anchorTag, out PxRect anchorRect, out MonitorBounds bounds, out double dpi)
+    {
+        anchorRect = default;
+        bounds = _bar.CurrentBounds ?? (_triggers.Count > 0 ? _triggers[0].Bounds : new MonitorBounds(new PxRect(0, 0, 1920, 1080), new PxRect(0, 0, 1920, 1040)));
+        dpi = Win32.DpiScaleOf(_bar.HMonitor) ?? 1.0;
+        return _bar.TryGetChipRect(anchorTag, out anchorRect);
+    }
+
+    private void OnListNewNoteRequested(long groupId)
+    {
+        if (_core is null)
+        {
+            return;
+        }
+
+        // Task 6: create + refresh. Opening the NoteWindow is Task 7 (raise-only stub follows).
+        Note created = _core.CreateNote(groupId, "");
+        _lastSnapshot = _core.GetBarSnapshot();
+        _bar.Rebuild(_lastSnapshot);
+        if (_list.Mode == GroupListMode.OpenGroup && _list.CurrentGroupId == groupId)
+        {
+            GroupSummary? group = FindGroup(groupId);
+            if (group is not null)
+            {
+                _list.RefreshGroup(group, GroupNotesSorted(groupId));
+            }
+        }
+
+        OpenNoteRequested?.Invoke(this, created.Id);
+    }
+
+    private void OnListGroupRowActivated(long groupId)
+    {
+        // Stay anchored to the 'Groups ▾' chip; re-render the list in place to the group's notes.
+        GroupSummary? group = FindGroup(groupId);
+        if (group is null)
+        {
+            return;
+        }
+
+        _list.ShowGroup(group, GroupNotesSorted(groupId));
+        _openListAnchorTag = "groups-menu"; // unchanged anchor
+        PublishSurfaces(Win32.DpiScaleOf(_bar.HMonitor) ?? 1.0);
+    }
+
+    private void OnListGroupPinToggled(long groupId) => ToggleGroupPinned(groupId);
+
+    private void OnListGroupCreateCommitted(string name)
+    {
+        if (_core is null)
+        {
+            return;
+        }
+
+        _core.CreateGroup(name, pinned: true); // §10: new groups are pinned by default
+        RefreshBar();
+        if (_list.Mode == GroupListMode.OpenAllGroups)
+        {
+            _list.RefreshAllGroups(GroupsSorted());
+        }
+    }
+
+    private void OnListGroupRenameCommitted(long groupId, string name)
+    {
+        if (_core is null)
+        {
+            return;
+        }
+
+        _core.RenameGroup(groupId, name);
+        RefreshBar();
+        if (_list.Mode == GroupListMode.OpenGroup && _list.CurrentGroupId == groupId)
+        {
+            GroupSummary? group = FindGroup(groupId);
+            if (group is not null)
+            {
+                _list.RefreshGroup(group, GroupNotesSorted(groupId));
+            }
+        }
+    }
+
+    private void OnListGroupDeleteConfirmed(long groupId)
+    {
+        if (_core is null)
+        {
+            return;
+        }
+
+        _core.DeleteGroup(groupId); // cascade note delete happens inside the core
+        CloseList();
+        RefreshBar();
+    }
+
+    private void ToggleGroupPinned(long groupId)
+    {
+        GroupSummary? group = FindGroup(groupId);
+        if (group is null || _core is null)
+        {
+            return;
+        }
+
+        bool nowPinned = !group.IsPinned; // group is the pre-toggle snapshot
+        _core.SetGroupPinned(groupId, nowPinned);
+        RefreshBar();
+
+        // If the open list is anchored to this group's chip and the chip just disappeared
+        // (group became unpinned), close it; otherwise re-render in place.
+        if (_openListAnchorTag == $"group:{groupId}" && !nowPinned)
+        {
+            CloseList();
+        }
+        else if (_list.Mode == GroupListMode.OpenGroup && _list.CurrentGroupId == groupId)
+        {
+            GroupSummary? updated = FindGroup(groupId);
+            if (updated is not null)
+            {
+                _list.RefreshGroup(updated, GroupNotesSorted(groupId));
+            }
+        }
+        else if (_list.Mode == GroupListMode.OpenAllGroups)
+        {
+            _list.RefreshAllGroups(GroupsSorted());
+        }
+    }
+
+    private void ToggleNotePinned(long noteId)
+    {
+        if (_core is null || _lastSnapshot is null)
+        {
+            return;
+        }
+
+        bool currentlyPinned = _lastSnapshot.PinnedItems
+            .Select(p => p.Note)
+            .OfType<NoteSummary>()
+            .Any(n => n.Id == noteId);
+
+        _core.SetNotePinned(noteId, !currentlyPinned);
+        RefreshBar();
+    }
+
+    private void RefreshBar()
+    {
+        if (_core is null)
+        {
+            return;
+        }
+
+        _lastSnapshot = _core.GetBarSnapshot();
+        _bar.Rebuild(_lastSnapshot);
+    }
+
+    private IReadOnlyList<GroupSummary> GroupsSorted() =>
+        _lastSnapshot?.AllGroups.OrderBy(g => g.CreatedAtMs).ToList() ?? new List<GroupSummary>();
+
+    private IReadOnlyList<NoteSummary> GroupNotesSorted(long groupId) =>
+        _core?.ListGroupNotes(groupId).OrderByDescending(n => n.LastOpenedAtMs).ToList() ?? new List<NoteSummary>();
+
+    private GroupSummary? FindGroup(long groupId) =>
+        _lastSnapshot?.AllGroups.FirstOrDefault(g => g.Id == groupId)
+        ?? _core?.GetBarSnapshot().AllGroups.FirstOrDefault(g => g.Id == groupId);
 
     private void HideAll()
     {
+        _openListAnchorTag = null;
+        _list.CloseList();
         _tracker.SetVisible(false);
         _bar.HideBar();
         // NoteWindow/QuickNoteWindow are closed/flushed here in Tasks 7/8.
