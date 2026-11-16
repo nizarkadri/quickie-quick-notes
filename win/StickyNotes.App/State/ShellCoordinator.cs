@@ -59,9 +59,17 @@ public sealed class ShellCoordinator : IDisposable
         _list.GroupRenameCommitted += OnListGroupRenameCommitted;
         _list.GroupDeleteConfirmed += OnListGroupDeleteConfirmed;
         _list.InlineEditStarted += (_, _) => Machine.EditorFocused();
-        _list.InlineEditEnded += (_, _) => Machine.EditorDeactivated(
-            toExternalWindow: !Win32.IsOwnAppWindow(Win32.GetForegroundWindow()),
-            cursorInSurfaces: _tracker.IsCursorInside);
+        _list.InlineEditEnded += (_, _) =>
+        {
+            if (_disposed)
+            {
+                return; // shutdown already drained the queue
+            }
+
+            Machine.EditorDeactivated(
+                toExternalWindow: !Win32.IsOwnAppWindow(Win32.GetForegroundWindow()),
+                cursorInSurfaces: _tracker.IsCursorInside);
+        };
 
         _tick = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(TickIntervalMs) };
         _tick.Tick += OnTick;
@@ -319,10 +327,10 @@ public sealed class ShellCoordinator : IDisposable
         (MonitorBounds bounds, double dpi, _) = BarContext();
         var win = new NoteWindow(_core, note, createdThisOpen);
         win.ClosedByUser += OnNoteWindowClosed;
+        win.EditorActivated += (_, _) => Machine.EditorFocused(); // lock the bar ONLY when the note really takes focus
         _noteWindow = win;
         win.ShowNote(anchorRect, bounds, dpi, anchorIsHorizontalBarItem, focused);
 
-        Machine.EditorFocused();
         PublishSurfaces(dpi);
     }
 
@@ -364,6 +372,11 @@ public sealed class ShellCoordinator : IDisposable
             return;
         }
 
+        // §8.4: on '+', close any open NoteWindow / GroupList first.
+        CloseNoteWindow();
+        _openListAnchorTag = null;
+        _list.CloseList();
+
         if (_quickNoteWindow is not null)
         {
             _quickNoteWindow.FocusBody(); // already open: just refocus, don't stack a second
@@ -372,7 +385,18 @@ public sealed class ShellCoordinator : IDisposable
 
         (MonitorBounds bounds, double dpi, _) = BarContext();
         var win = new QuickNoteWindow(_core);
-        win.LoadTargets(_lastSnapshot ?? _core.GetBarSnapshot());
+        List<NoteSummary> appendTargets;
+        try
+        {
+            appendTargets = _core.ListAppendTargets(30).ToList();
+        }
+        catch (StickyCoreException ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"ListAppendTargets failed ({ex.Status}): {ex.Message}");
+            appendTargets = new List<NoteSummary>();
+        }
+
+        win.LoadTargets(_lastSnapshot ?? _core.GetBarSnapshot(), appendTargets);
         win.QuickNoteClosed += OnQuickNoteClosed;
         _quickNoteWindow = win;
 
@@ -682,7 +706,6 @@ public sealed class ShellCoordinator : IDisposable
         _list.CloseList();
         _tracker.SetVisible(false);
         _bar.HideBar();
-        RefreshBar();
     }
 
     // ------------------------------------------------------------------ monitors

@@ -30,6 +30,9 @@ public partial class NoteWindow : Window
     private bool _closed;
     private bool _pinned;
 
+    /// <summary>Raised when the window takes keyboard focus (focused open, or click-in from passive).</summary>
+    public event EventHandler? EditorActivated;
+
     public NoteWindow(IStickyCoreClient core, Note note, bool createdThisOpen)
     {
         ArgumentNullException.ThrowIfNull(core);
@@ -66,10 +69,21 @@ public partial class NoteWindow : Window
         }
 
         _autosaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
-        _autosaveTimer.Tick += (_, _) => _session.Advance(50);
+        _autosaveTimer.Tick += (_, _) =>
+        {
+            try
+            {
+                _session.Advance(50);
+            }
+            catch (StickyCoreException ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Autosave failed ({ex.Status}): {ex.Message}");
+            }
+        };
         _autosaveTimer.Start();
 
         Deactivated += OnDeactivated;
+        Activated += (_, _) => EditorActivated?.Invoke(this, EventArgs.Empty);
     }
 
     public long NoteId => _session.NoteId;
@@ -107,12 +121,10 @@ public partial class NoteWindow : Window
         Visibility = Visibility.Visible;
         if (focused)
         {
-            // Activate explicitly and focus the TextBox ('+ New Note' / empty-note path).
+            // Force-activate with AttachThreadInput fallback — the foreground lock may be held by a foreign app.
             _ = Win32.SetWindowPos(hwnd, Win32.HWND_TOPMOST, rect.X, rect.Y, rect.Width, rect.Height,
                 Win32.SWP_SHOWWINDOW);
-            Activate();
-            BodyBox.Focus();
-            Keyboard.Focus(BodyBox);
+            FocusHelper.ForceActivateAndFocus(this, hwnd, BodyBox);
             BodyBox.CaretIndex = BodyBox.Text.Length;
         }
         else
@@ -228,7 +240,23 @@ public partial class NoteWindow : Window
         _closed = true;
         _autosaveTimer.Stop();
 
-        NoteCloseOutcome outcome = alreadyDeleted ? NoteCloseOutcome.Saved : _session.Close();
+        NoteCloseOutcome outcome = NoteCloseOutcome.Unchanged;
+        if (alreadyDeleted)
+        {
+            outcome = NoteCloseOutcome.Saved;
+        }
+        else
+        {
+            try
+            {
+                outcome = _session.Close();
+            }
+            catch (StickyCoreException ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Note flush-on-close failed ({ex.Status}): {ex.Message}");
+                outcome = NoteCloseOutcome.Saved; // text may be lost — treat as saved-dirty rather than crash
+            }
+        }
 
         if (restoreForeground)
         {
@@ -249,6 +277,7 @@ public partial class NoteWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        _autosaveTimer.Stop();
         FocusHelper.ForgetWindow(new WindowInteropHelper(this).Handle);
         base.OnClosed(e);
     }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -21,8 +22,13 @@ public partial class QuickNoteWindow : Window
     private readonly IStickyCoreClient _core;
     private readonly QuickNoteSession _session;
     private bool _closed;
+    private bool _suppressDeactivate; // true while a target-picker ContextMenu owns the screen
+    private bool _menuPicked;         // true when a menu item was clicked (re-focus instead of committing closed)
 
-    public QuickNoteWindow(IStickyCoreClient core, string initialTargetHint = "Standalone")
+    private BarSnapshot? _targetSnapshot;
+    private IReadOnlyList<NoteSummary>? _appendTargets;
+
+    public QuickNoteWindow(IStickyCoreClient core)
     {
         ArgumentNullException.ThrowIfNull(core);
         _core = core;
@@ -53,6 +59,7 @@ public partial class QuickNoteWindow : Window
         if (x + wPhys > bounds.WorkArea.Right) x = bounds.WorkArea.Right - wPhys;
         if (x < bounds.WorkArea.Left) x = bounds.WorkArea.Left;
         if (y + hPhys > bounds.WorkArea.Bottom) y = bounds.WorkArea.Bottom - hPhys;
+        if (y < bounds.WorkArea.Top) y = bounds.WorkArea.Top;
 
         Visibility = Visibility.Visible;
         var helper = new WindowInteropHelper(this);
@@ -81,10 +88,11 @@ public partial class QuickNoteWindow : Window
         return true;
     }
 
-    /// <summary>Populate the target selector (call once per open, after snapshot).</summary>
-    public void LoadTargets(BarSnapshot snapshot)
+    /// <summary>Populate the target selector at open time. <paramref name="appendTargets"/> should be ListAppendTargets(30) (falls back to RecentNotes).</summary>
+    public void LoadTargets(BarSnapshot snapshot, IReadOnlyList<NoteSummary>? appendTargets = null)
     {
         _targetSnapshot = snapshot;
+        _appendTargets = appendTargets;
         UpdateButtonStates();
     }
 
@@ -96,8 +104,6 @@ public partial class QuickNoteWindow : Window
 
     /// <summary>Programmatic close from the coordinator (bar hide / app exit) — commit-if-non-empty semantics.</summary>
     public void CloseProgrammatically(QuickNoteClose reason) => CloseInternal(reason);
-
-    private BarSnapshot? _targetSnapshot;
 
     private void OnStandaloneClick(object sender, RoutedEventArgs e)
     {
@@ -112,6 +118,8 @@ public partial class QuickNoteWindow : Window
             return;
         }
 
+        // A ContextMenu is its own activated popup HWND — it fires our Deactivated, which would
+        // commit+close the editor. Suppress deactivation handling while the menu is open.
         var menu = new ContextMenu();
         foreach (GroupSummary g in _targetSnapshot.AllGroups) // already created_at_ms ASC
         {
@@ -120,6 +128,7 @@ public partial class QuickNoteWindow : Window
             var item = new MenuItem { Header = (selected ? "✓ " : "") + g.Name };
             item.Click += (_, _) =>
             {
+                _menuPicked = true;
                 _session.Target = QuickCaptureTarget.Group(id);
                 UpdateButtonStates();
             };
@@ -131,8 +140,7 @@ public partial class QuickNoteWindow : Window
             menu.Items.Add(new MenuItem { Header = "(no groups yet)", IsEnabled = false });
         }
 
-        menu.PlacementTarget = GroupButton;
-        menu.IsOpen = true;
+        OpenMenu(menu, GroupButton);
     }
 
     private void OnAppendClick(object sender, RoutedEventArgs e)
@@ -142,14 +150,17 @@ public partial class QuickNoteWindow : Window
             return;
         }
 
+        IReadOnlyList<NoteSummary> appendList = _appendTargets ?? _targetSnapshot.RecentNotes;
+
         var menu = new ContextMenu();
-        foreach (NoteSummary n in _targetSnapshot.RecentNotes)
+        foreach (NoteSummary n in appendList.Take(30))
         {
             long id = n.Id;
             bool selected = _session.Target.Mode == QuickCaptureTarget.AppendMode && _session.Target.NoteId == id;
             var item = new MenuItem { Header = (selected ? "✓ " : "") + n.TitlePreview };
             item.Click += (_, _) =>
             {
+                _menuPicked = true;
                 _session.Target = QuickCaptureTarget.Append(id);
                 UpdateButtonStates();
             };
@@ -158,10 +169,37 @@ public partial class QuickNoteWindow : Window
 
         if (menu.Items.Count == 0)
         {
-            menu.Items.Add(new MenuItem { Header = "(no recent notes)", IsEnabled = false });
+            menu.Items.Add(new MenuItem { Header = "(no appendable notes)", IsEnabled = false });
         }
 
-        menu.PlacementTarget = AppendButton;
+        OpenMenu(menu, AppendButton);
+    }
+
+    private void OpenMenu(ContextMenu menu, UIElement target)
+    {
+        _suppressDeactivate = true;
+        menu.Closed += (_, _) =>
+        {
+            _suppressDeactivate = false;
+            if (IsActive)
+            {
+                _menuPicked = false;
+                return;
+            }
+
+            if (_menuPicked)
+            {
+                // The user picked a target — keep editing, return focus to the text box.
+                _menuPicked = false;
+                FocusHelper.ForceActivateAndFocus(this, new WindowInteropHelper(this).Handle, BodyBox);
+            }
+            else
+            {
+                // The suppression ate the click-away: it's a click-outside commit.
+                CloseInternal(QuickNoteClose.ClickOutside);
+            }
+        };
+        menu.PlacementTarget = target;
         menu.IsOpen = true;
     }
 
@@ -194,6 +232,11 @@ public partial class QuickNoteWindow : Window
 
     private void OnDeactivated(object? sender, EventArgs e)
     {
+        if (_suppressDeactivate)
+        {
+            return; // the user is picking from a target ContextMenu, not clicking outside
+        }
+
         // Click-outside commits non-empty text (§8.4); empty text commits nothing.
         CloseInternal(QuickNoteClose.ClickOutside);
     }
@@ -207,7 +250,17 @@ public partial class QuickNoteWindow : Window
 
         _closed = true;
         _session.Text = BodyBox.Text;
-        QuickNoteOutcome outcome = _session.Close(reason);
+
+        QuickNoteOutcome outcome;
+        try
+        {
+            outcome = _session.Close(reason); // quick capture can throw if the append target was cascade-deleted / group deleted
+        }
+        catch (StickyCoreException ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"QuickNote commit failed ({ex.Status}): {ex.Message}");
+            outcome = QuickNoteOutcome.NothingToCommit;
+        }
 
         if (reason != QuickNoteClose.ClickOutside)
         {
