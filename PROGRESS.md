@@ -49,7 +49,7 @@ Parallelizable: **only Task 2 and Task 4**, both after Task 1.
 | 4 | done | AUTOMATED GATE PASSED 2026-11-15 (Task=3\|Task=4 41/41) | 10abeeb (+ fixes df22308) | stronger-model review APPROVED (Dev-1 + Dev-2); F1-F5+F8 fixed & re-reviewed | — |
 | 5 | done | AUTOMATED GATE PASSED 2026-11-15 (Task=3\|4\|5 59/59) | b6bade1 + f698a90 + a559d2c | Dev-1+Dev-2 review PASS; MANUAL signed off 2026-11-15 (item 6 fixed) | n/a |
 | 6 | done | AUTOMATED GATE PASSED 2026-11-15 (regression 59/59; no automated tests) | a256578 + 2d48c42 + f12581e | MANUAL signed off 2026-11-16; QA PASS (stale-_group crash fixed f12581e) | n/a |
-| 7+8 | review | AUTOMATED GATE PASSED 2026-11-16 (Task=3\|4\|5\|7\|8 77/77) | c7a8274 + 89785b3 | Dev-2 re-review 9/9 PASS (R1 LOW deferred, R2 nit); MANUAL (Tasks 7,8) pending | pending |
+| 7+8 | done | AUTOMATED GATE PASSED 2026-11-16 (Task=3\|4\|5\|7\|8 77/77) | c7a8274 + 89785b3 | Dev-2 re-review 9/9 PASS; MANUAL signed off 2026-11-16 (all pass) | n/a |
 | 7+8 | todo | — | — | — | — |
 | 9 | todo | — | — | — | — |
 | 10 | todo | — | — | — | — |

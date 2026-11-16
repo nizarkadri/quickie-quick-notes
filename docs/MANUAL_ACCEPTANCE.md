@@ -24,21 +24,21 @@ Record the result (and the Windows build) next to each item.
 - [x] No modal dialogs or `MessageBox` appear anywhere. **(verified 2026-11-16)**
 
 ## Task 7 - Note window
-- [ ] Clicking an existing note opens it beside the list row WITHOUT stealing focus (keep typing in Terminal); clicking inside it activates it for typing.
-- [ ] Row near the right screen edge: the note opens to the left of the row.
-- [ ] `+ New Note` focuses the text box immediately. Press Esc with nothing typed: no empty note remains.
-- [ ] Opening a second note saves and replaces the first (only one note window at a time).
-- [ ] While typing in a note, moving the mouse far away does not hide it. Esc and click-outside save and close.
-- [ ] Type text, then kill the process from Task Manager within ~1 s: at most the last ~350 ms of typing is lost.
-- [ ] Deleting an empty note is instant; deleting a non-empty note shows an inline confirm.
-- [ ] Note window is not in Alt+Tab or the Taskbar.
+- [x] Clicking an existing note opens it beside the list row WITHOUT stealing focus (keep typing in Terminal); clicking inside it activates it for typing. **(verified 2026-11-16)**
+- [x] Row near the right screen edge: the note opens to the left of the row. **(verified 2026-11-16)**
+- [x] `+ New Note` focuses the text box immediately. Press Esc with nothing typed: no empty note remains. **(verified 2026-11-16)**
+- [x] Opening a second note saves and replaces the first (only one note window at a time). **(verified 2026-11-16)**
+- [x] While typing in a note, moving the mouse far away does not hide it. Esc and click-outside save and close. **(verified 2026-11-16)**
+- [x] Type text, then kill the process from Task Manager within ~1 s: at most the last ~350 ms of typing is lost. **(verified 2026-11-16)**
+- [x] Deleting an empty note is instant; deleting a non-empty note shows an inline confirm. **(verified 2026-11-16)**
+- [x] Note window is not in Alt+Tab or the Taskbar. **(verified 2026-11-16)**
 
 ## Task 8 - Quick note
-- [ ] Clicking `+` focuses the editor immediately; hint text shows "Ctrl+Enter or click outside to save - Esc to discard".
-- [ ] Standalone, Add to group, and Append each commit correctly; the new/target note appears first in Recents.
-- [ ] Esc discards in all three modes. Append + Esc leaves the target note untouched.
-- [ ] After commit or Esc, keyboard focus returns to the previously active app.
-- [ ] Empty editor closed any way writes nothing.
+- [x] Clicking `+` focuses the editor immediately; hint text shows "Ctrl+Enter or click outside to save - Esc to discard". **(verified 2026-11-16)**
+- [x] Standalone, Add to group, and Append each commit correctly; the new/target note appears first in Recents. **(verified 2026-11-16)**
+- [x] Esc discards in all three modes. Append + Esc leaves the target note untouched. **(verified 2026-11-16)**
+- [x] After commit or Esc, keyboard focus returns to the previously active app. **(verified 2026-11-16)**
+- [x] Empty editor closed any way writes nothing. **(verified 2026-11-16)**
 
 ## Task 9 - Resilience
 - [ ] Change display resolution/scale: triggers reposition, nothing is stranded off-screen, no crash.
