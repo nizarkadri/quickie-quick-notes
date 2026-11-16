@@ -98,20 +98,42 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        _coordinator?.Shutdown();
-        _coordinator = null;
-
-        DestroyTrayIcon();
-
-        if (_ownsMutex)
+        // App-exit flush happens inside coordinator.Shutdown() (closes quick note → commit-if-non-empty,
+        // flushes the note window), BEFORE the coordinator is disposed and sn_core_close runs.
+        // Cleanup is in finally blocks so tray/mutex can't be stranded by an exception.
+        try
         {
-            _singleInstanceMutex?.ReleaseMutex();
+            _coordinator?.Shutdown(); // flushes dirty text, then closes triggers/bar/list + sn_core_close
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"ShellCoordinator.Shutdown failed: {ex}");
         }
 
-        _singleInstanceMutex?.Dispose();
-        _singleInstanceMutex = null;
+        _coordinator = null;
 
-        base.OnExit(e);
+        try
+        {
+            DestroyTrayIcon();
+        }
+        finally
+        {
+            if (_ownsMutex)
+            {
+                try
+                {
+                    _singleInstanceMutex?.ReleaseMutex();
+                }
+                catch (ApplicationException)
+                {
+                    // Mutex not owned anymore (or already released) — nothing to do.
+                }
+            }
+
+            _singleInstanceMutex?.Dispose();
+            _singleInstanceMutex = null;
+            base.OnExit(e);
+        }
     }
 
     // ------------------------------------------------------------------ tray

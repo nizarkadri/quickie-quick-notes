@@ -42,6 +42,33 @@ public sealed class ShellCoordinator : IDisposable
     private bool _started;
     private bool _disposed;
 
+    /// <summary>Stop the 50ms UI tick entirely whenever the machine is Hidden (0% idle CPU); restart on first activity.</summary>
+    private void UpdateTickState()
+    {
+        if (_disposed)
+        {
+            if (_tick.IsEnabled)
+            {
+                _tick.Stop();
+            }
+
+            return;
+        }
+
+        if (Machine.PollingActive)
+        {
+            if (!_tick.IsEnabled)
+            {
+                _lastTickUtc = DateTime.UtcNow;
+                _tick.Start();
+            }
+        }
+        else if (_tick.IsEnabled)
+        {
+            _tick.Stop();
+        }
+    }
+
     public ShellCoordinator(string dbPath)
     {
         _dbPath = dbPath ?? throw new ArgumentNullException(nameof(dbPath));
@@ -100,7 +127,7 @@ public sealed class ShellCoordinator : IDisposable
         _lastTickUtc = DateTime.UtcNow;
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
 
-        _tick.Start();
+        UpdateTickState(); // Hidden at startup: tick stays stopped; TriggerEntered restarts it
     }
 
     /// <summary>Flush + hide everything and release native resources. Idempotent.</summary>
@@ -165,6 +192,7 @@ public sealed class ShellCoordinator : IDisposable
     {
         _activeMonitor = e.Monitor;
         Machine.TriggerEntered(e.Monitor);
+        UpdateTickState(); // wake the tick if the machine wants polling (DwellPending...)
     }
 
     private void OnTriggerLeft(object? sender, TriggerMonitorEventArgs e) => Machine.TriggerLeft();
@@ -186,6 +214,7 @@ public sealed class ShellCoordinator : IDisposable
             }
 
             RebuildTriggers();
+            UpdateTickState();
         }));
     }
 
@@ -213,6 +242,8 @@ public sealed class ShellCoordinator : IDisposable
         {
             ApplyAction(action);
         }
+
+        UpdateTickState(); // stop the 50ms tick the moment the machine returns to Hidden
     }
 
     private bool CursorInTrigger()
@@ -706,7 +737,15 @@ public sealed class ShellCoordinator : IDisposable
         _list.CloseList();
         _tracker.SetVisible(false);
         _bar.HideBar();
+
+        // Idle trim: once fully hidden, return memory to the OS (GC + working-set emptying).
+        // Keeps the steady-state RSS under the <50 MB budget after big flushes/renders.
+        GC.Collect();
+        _ = EmptyWorkingSet(new IntPtr(-1)); // pseudo-handle to the current process
     }
+
+    [System.Runtime.InteropServices.DllImport("psapi.dll")]
+    private static extern bool EmptyWorkingSet(IntPtr hProcess);
 
     // ------------------------------------------------------------------ monitors
 
