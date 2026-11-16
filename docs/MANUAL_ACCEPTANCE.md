@@ -15,13 +15,13 @@ Record the result (and the Windows build) next to each item.
 - [ ] Moving the cursor diagonally from the bar into a group list or note window never closes the bar. **(pending Task 6/7 — group list / note window not built yet)**
 
 ## Task 6 - Groups
-- [ ] Clicking a group opens the list below it with `+ New Note` permanently at the top; notes below are newest-opened first.
-- [ ] Clicking a different group switches lists; clicking the same group closes it.
-- [ ] `Groups ▾` shows ALL groups (pinned and unpinned); an unpinned group is still reachable and can be re-pinned.
-- [ ] `+ New Group` and Rename: you can type into the box (inline edit), Enter commits, Esc cancels, and afterwards focus returns to the app you were using (type in Terminal immediately to verify).
-- [ ] Clicking away mid-rename ends the edit and does not leave the list stuck or swallowing keystrokes.
-- [ ] Deleting a group shows an inline confirmation with the exact note count, then removes the group, its notes, and any pinned chips.
-- [ ] No modal dialogs or `MessageBox` appear anywhere.
+- [x] Clicking a group opens the list below it with `+ New Note` permanently at the top; notes below are newest-opened first. **(verified 2026-11-16)**
+- [x] Clicking a different group switches lists; clicking the same group closes it. **(verified 2026-11-16)**
+- [x] `Groups ▾` shows ALL groups (pinned and unpinned); an unpinned group is still reachable and can be re-pinned. **(verified 2026-11-16)**
+- [x] `+ New Group` and Rename: you can type into the box (inline edit), Enter commits, Esc cancels, and afterwards focus returns to the app you were using (type in Terminal immediately to verify). **(verified 2026-11-16)**
+- [x] Clicking away mid-rename ends the edit and does not leave the list stuck or swallowing keystrokes. **(verified 2026-11-16)**
+- [x] Deleting a group shows an inline confirmation with the exact note count, then removes the group, its notes, and any pinned chips. **(verified 2026-11-16)**
+- [x] No modal dialogs or `MessageBox` appear anywhere. **(verified 2026-11-16)**
 
 ## Task 7 - Note window
 - [ ] Clicking an existing note opens it beside the list row WITHOUT stealing focus (keep typing in Terminal); clicking inside it activates it for typing.
