@@ -9,5 +9,7 @@ obj/
 *.db
 *.db-wal
 *.db-shm
+# Distributable build output (scripts/package.ps1)
+dist/
 # Native DLL staged by scripts/build.ps1 (regenerated on build)
 win/StickyNotes.App/runtimes/
