@@ -107,7 +107,7 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            // Release builds strip Debug.WriteLine — use Trace so the failure is always observable.
+            // Release builds strip Debug.WriteLine — keep the failure observable via Trace (R1: call site IS Trace).
             System.Diagnostics.Trace.WriteLine($"ShellCoordinator.Shutdown failed: {ex}");
 #if DEBUG
             System.Diagnostics.Debug.Fail($"ShellCoordinator.Shutdown failed: {ex}");

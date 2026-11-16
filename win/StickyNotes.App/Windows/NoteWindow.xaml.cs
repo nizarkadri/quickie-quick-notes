@@ -114,7 +114,8 @@ public partial class NoteWindow : Window
     /// <summary>Raised when the window closes itself (flush completed). Parameter: session outcome.</summary>
     public event EventHandler<NoteWindowClosedEventArgs>? ClosedByUser;
 
-    /// <summary>Raised when the window loses keyboard focus (external or internal click-outside).</summary>
+    /// <summary>Raised when the window loses keyboard focus (external or internal click-outside).
+    /// RESERVED/EXTENSION POINT (R2): no in-app subscriber today — the grace timer owns the close path; kept for future shells that want raw deactivation.</summary>
     public event EventHandler? EditorDeactivated;
 
     protected override void OnSourceInitialized(EventArgs e)
