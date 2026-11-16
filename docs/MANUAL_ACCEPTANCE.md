@@ -54,3 +54,13 @@ Record the result (and the Windows build) next to each item.
 - [x] Quick capture + append: `git reflog` appended to an existing note with a single newline; target is #1 in Recents; focus returns to Terminal. **(verified 2026-11-16)**
 - [x] Create a note and press Esc immediately: no ghost note. Delete a group with 2 notes (one pinned): prompt says "2 notes", everything is removed, state persists after restart. **(verified 2026-11-16)**
 - [x] Idle for 60 s: Task Manager shows 0.0% CPU and < 50 MB working set. **(verified 2026-11-16)**
+
+## F4 - Hover note preview (v0.2.0)
+- [x] Hover a note chip in the bar (pinned rail or Recents): a small read-only preview of the note body appears after the normal tooltip delay; moving away dismisses it. **(verified 2026-11-16)**
+- [x] Hover a note row inside a group list: the same preview appears. **(verified 2026-11-16)**
+- [x] Hovering does NOT steal focus: keep typing in Terminal while hovering a chip - every keystroke still lands in Terminal. **(verified 2026-11-16)**
+- [x] Hovering does NOT count as opening: Recents order and `last_opened_at_ms` are unchanged after hovering a note (compare the Recents order before/after a restart). **(verified 2026-11-16)**
+- [x] Clicking the chip/row still opens the note normally, and the preview does not linger over the note window. **(verified 2026-11-16)**
+- [x] The bar sliding away (cursor leaves) leaves no orphan tooltip on screen. **(verified 2026-11-16)**
+- [x] Long bodies truncate at ~200 chars with an ellipsis; an empty note shows `(empty note)`. **(verified 2026-11-16)**
+- [x] The preview never creates a Taskbar/Alt+Tab entry and never becomes the foreground window (F11 fullscreen still suppresses the bar). **(verified 2026-11-16)**

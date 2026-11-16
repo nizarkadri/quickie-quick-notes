@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Controls.Primitives;
 using StickyNotes.App.Core;
 using StickyNotes.App.Interop;
 
@@ -80,6 +81,12 @@ public partial class GroupListWindow : Window
     /// <summary>Group currently shown in OpenGroup mode (null in OpenAllGroups).</summary>
     public long? CurrentGroupId => _group?.Id;
 
+    /// <summary>F4: resolve a note body for the read-only hover preview (must use markOpened:false).</summary>
+    public Func<long, string?>? PreviewResolver { get; set; }
+
+    // F4: one non-activating ToolTip per note row, closed when the list re-renders or hides.
+    private readonly List<(Button Row, TextBlock Text)> _tips = new();
+
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
@@ -120,7 +127,11 @@ public partial class GroupListWindow : Window
     public void RefreshAllGroups(IReadOnlyList<GroupSummary> allGroups) => RenderAllGroupsMode(allGroups);
 
     /// <summary>Hide (never close — the window is reused).</summary>
-    public void CloseList() => Visibility = Visibility.Hidden;
+    public void CloseList()
+    {
+        CloseTips();
+        Visibility = Visibility.Hidden;
+    }
 
     /// <summary>Physical pixel rect for hit-testing; default when hidden.</summary>
     public bool TryGetPhysicalRect(out PxRect rect)
@@ -158,6 +169,7 @@ public partial class GroupListWindow : Window
         ToolTipService.SetToolTip(PinToggleButton, group.IsPinned ? "Unpin group" : "Pin group");
         NewNoteButton.Visibility = Visibility.Visible;
 
+        CloseTips();
         RowsPanel.Children.Clear();
         foreach (NoteSummary note in notes.OrderByDescending(n => n.LastOpenedAtMs))
         {
@@ -178,6 +190,7 @@ public partial class GroupListWindow : Window
         DeleteButton.Visibility = Visibility.Collapsed;
         NewNoteButton.Visibility = Visibility.Collapsed;
 
+        CloseTips();
         RowsPanel.Children.Clear();
         foreach (GroupSummary g in allGroups.OrderBy(g => g.CreatedAtMs))
         {
@@ -197,7 +210,11 @@ public partial class GroupListWindow : Window
             Cursor = Cursors.Hand,
             Padding = new Thickness(10, 0, 10, 0),
         };
-        row.Click += (_, _) => NoteClicked?.Invoke(note.Id, RectOf(row));
+        row.Click += (_, _) =>
+        {
+            CloseTips();
+            NoteClicked?.Invoke(note.Id, RectOf(row));
+        };
 
         var content = new Grid();
         content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -226,7 +243,62 @@ public partial class GroupListWindow : Window
         }
 
         row.Content = content;
+        AttachNotePreview(row, note.Id);
         return row;
+    }
+
+    /// <summary>
+    /// F4: read-only hover preview for a note row. Fetched on ToolTipOpening with
+    /// markOpened:false, so hovering never reorders recents or marks the note opened.
+    /// </summary>
+    private void AttachNotePreview(Button row, long noteId)
+    {
+        // WPF forbids attaching a ToolTip with StaysOpen=false to an element, so the bubble is
+        // shown as ToolTipService content; its default lifetime already dismisses on mouse-away.
+        TextBlock text = NotePreview.CreateContent();
+        ToolTipService.SetToolTip(row, text);
+        ToolTipService.SetPlacement(row, PlacementMode.Bottom);
+        ToolTipService.SetVerticalOffset(row, NotePreview.VerticalOffset);
+        ToolTipService.SetInitialShowDelay(row, NotePreview.InitialShowDelayMs);
+        _tips.Add((row, text));
+
+        // A manual CloseTips() clears the tooltip; re-arm it on the next hover.
+        row.MouseEnter += (_, _) => ToolTipService.SetToolTip(row, text);
+
+        row.ToolTipOpening += (_, e) =>
+        {
+            string? body;
+            try
+            {
+                body = PreviewResolver?.Invoke(noteId);
+            }
+            catch (StickyCoreException)
+            {
+                body = null;
+            }
+            catch (ObjectDisposedException)
+            {
+                body = null; // shutdown raced a hover
+            }
+
+            if (body is null)
+            {
+                e.Handled = true;
+                return;
+            }
+
+            text.Text = NotePreview.Format(body);
+        };
+    }
+
+    private void CloseTips()
+    {
+        foreach ((Button row, _) in _tips)
+        {
+            ToolTipService.SetToolTip(row, null); // re-armed by the row's MouseEnter handler
+        }
+
+        _tips.Clear();
     }
 
     private Button BuildGroupRow(GroupSummary group)

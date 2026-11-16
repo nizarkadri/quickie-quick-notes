@@ -9,6 +9,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
+using System.Windows.Controls.Primitives;
 using StickyNotes.App.Core;
 using StickyNotes.App.Interop;
 
@@ -52,6 +53,15 @@ public partial class BarWindow : Window
 
     private readonly Dictionary<string, Button> _chips = new();
 
+    // F4: one non-activating ToolTip per note chip; closed when the bar hides or a chip is clicked.
+    private readonly Dictionary<string, TextBlock> _tips = new();
+
+    /// <summary>
+    /// F4: resolve a note body for the read-only hover preview. Must use markOpened:false so
+    /// hovering never bumps last_opened_at_ms / recents ordering. Returning null hides the bubble.
+    /// </summary>
+    public Func<long, string?>? PreviewResolver { get; set; }
+
     /// <summary>Raised when the user clicks the centered '+' (coordinator opens the real QuickNoteWindow).</summary>
     public event EventHandler? QuickCaptureRequested;
 
@@ -69,7 +79,9 @@ public partial class BarWindow : Window
     /// <summary>Rebuild the left rail (pinned rail: PinnedItems by pinned_at_ms ASC + trailing 'Groups ▾') and the recents panel (up to 5).</summary>
     public void Rebuild(BarSnapshot snapshot)
     {
+        CloseTips();
         _chips.Clear();
+        _tips.Clear();
 
         PinnedPanel.Children.Clear();
         foreach (PinnedItem item in snapshot.PinnedItems)
@@ -160,11 +172,88 @@ public partial class BarWindow : Window
         }
 
         chip.Content = content;
-        chip.Click += (_, _) => ChipActivated?.Invoke(this, new BarChipEventArgs(tag));
-        chip.MouseRightButtonUp += (_, _) => ChipPinToggleRequested?.Invoke(this, new BarChipEventArgs(tag));
+        chip.Click += (_, _) =>
+        {
+            CloseTips();
+            ChipActivated?.Invoke(this, new BarChipEventArgs(tag));
+        };
+        chip.MouseRightButtonUp += (_, _) =>
+        {
+            CloseTips();
+            ChipPinToggleRequested?.Invoke(this, new BarChipEventArgs(tag));
+        };
+
+        if (tag.StartsWith("note:", StringComparison.Ordinal))
+        {
+            AttachNotePreview(chip, tag);
+        }
 
         _chips[tag] = chip;
         return chip;
+    }
+
+    /// <summary>
+    /// F4: attach a read-only hover preview to a note chip. The body is fetched on ToolTipOpening
+    /// (not on hover-enter) so a quick pass over the bar costs nothing, and the tooltip is a
+    /// non-activating popup.
+    /// </summary>
+    private void AttachNotePreview(Button chip, string tag)
+    {
+        if (!long.TryParse(tag.AsSpan("note:".Length), out long noteId))
+        {
+            return;
+        }
+
+        // WPF forbids attaching a ToolTip with StaysOpen=false to an element, so the bubble is
+        // shown as ToolTipService content; its default lifetime already dismisses on mouse-away.
+        TextBlock text = NotePreview.CreateContent();
+        ToolTipService.SetToolTip(chip, text);
+        ToolTipService.SetPlacement(chip, PlacementMode.Bottom);
+        ToolTipService.SetVerticalOffset(chip, NotePreview.VerticalOffset);
+        ToolTipService.SetInitialShowDelay(chip, NotePreview.InitialShowDelayMs);
+        _tips[tag] = text;
+
+        // A manual CloseTips() clears the tooltip; re-arm it on the next hover.
+        chip.MouseEnter += (_, _) => ToolTipService.SetToolTip(chip, text);
+
+        chip.ToolTipOpening += (_, e) =>
+        {
+            string? body = ResolvePreview(noteId);
+            if (body is null)
+            {
+                e.Handled = true; // note vanished / core error — no misleading bubble
+                return;
+            }
+
+            text.Text = NotePreview.Format(body);
+        };
+    }
+
+    private string? ResolvePreview(long noteId)
+    {
+        try
+        {
+            return PreviewResolver?.Invoke(noteId);
+        }
+        catch (StickyCoreException)
+        {
+            return null;
+        }
+        catch (ObjectDisposedException)
+        {
+            return null; // shutdown raced a hover
+        }
+    }
+
+    private void CloseTips()
+    {
+        foreach (string tag in _tips.Keys)
+        {
+            if (_chips.TryGetValue(tag, out Button? chip))
+            {
+                ToolTipService.SetToolTip(chip, null); // re-armed by the chip's MouseEnter handler
+            }
+        }
     }
 
     /// <summary>Position the bar on the given monitor and play the 140ms slide-in (GPU TranslateTransform).</summary>
@@ -199,6 +288,8 @@ public partial class BarWindow : Window
     /// <summary>Slide the bar up (100ms) then hide it. Mid-animation re-show wins via the visibility token.</summary>
     public void HideBar()
     {
+        CloseTips(); // a tooltip must not linger after the bar slides away
+
         if (Visibility != Visibility.Visible)
         {
             return;

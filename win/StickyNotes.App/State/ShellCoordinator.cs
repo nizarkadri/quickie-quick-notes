@@ -102,6 +102,10 @@ public sealed class ShellCoordinator : IDisposable
 
         _tick = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(TickIntervalMs) };
         _tick.Tick += OnTick;
+
+        // F4: read-only hover previews for note chips/rows (never mark the note opened).
+        _bar.PreviewResolver = ResolveNotePreview;
+        _list.PreviewResolver = ResolveNotePreview;
     }
 
     /// <summary>30s-delayed one-shot idle trim: hides memory pressure without stuttering the 100ms hide animation or evicting the pre-created windows.</summary>
@@ -525,6 +529,30 @@ public sealed class ShellCoordinator : IDisposable
     }
 
     // ------------------------------------------------------------------ bar & group list
+
+    /// <summary>
+    /// F4: body for the read-only hover preview. markOpened:false keeps recents/ordering untouched.
+    /// </summary>
+    private string? ResolveNotePreview(long noteId)
+    {
+        if (_core is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return _core.GetNote(noteId, markOpened: false).Body;
+        }
+        catch (StickyCoreException)
+        {
+            return null; // deleted / db error — no bubble
+        }
+        catch (ObjectDisposedException)
+        {
+            return null; // shutdown raced a hover
+        }
+    }
 
     private void OnChipActivated(object? sender, Windows.BarChipEventArgs e)
     {
