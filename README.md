@@ -24,9 +24,7 @@ Built with a **Rust core** (SQLite + FFI) and a **C# WPF** UI — no Electron, n
 
 ## Download
 
-Grab the latest build from the [Releases](../../releases) page.
-
-The download is a **self-contained win-x64 ZIP** — testers do **not** need .NET or Rust installed.
+Download **StickyNotes-1.0.0-win-x64.zip** from the [Releases](../../releases) page (or build it yourself with `scripts\package.ps1`). The ZIP is a **self-contained win-x64 build** — testers do **not** need .NET or Rust installed.
 
 ### Run without installing
 1. Extract the ZIP.
