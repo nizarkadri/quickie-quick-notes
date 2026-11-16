@@ -50,7 +50,7 @@ Parallelizable: **only Task 2 and Task 4**, both after Task 1.
 | 5 | done | AUTOMATED GATE PASSED 2026-11-15 (Task=3\|4\|5 59/59) | b6bade1 + f698a90 + a559d2c | Dev-1+Dev-2 review PASS; MANUAL signed off 2026-11-15 (item 6 fixed) | n/a |
 | 6 | done | AUTOMATED GATE PASSED 2026-11-15 (regression 59/59; no automated tests) | a256578 + 2d48c42 + f12581e | MANUAL signed off 2026-11-16; QA PASS (stale-_group crash fixed f12581e) | n/a |
 | 7+8 | done | AUTOMATED GATE PASSED 2026-11-16 (Task=3\|4\|5\|7\|8 77/77) | c7a8274 + 89785b3 + c4305ca (5s grace) | Dev-2 re-review 9/9 PASS; MANUAL signed off 2026-11-16 (all pass) | n/a |
-| 9 | manual-pending | AUTOMATED GATE PASSED 2026-11-16 (regression 77/77; no automated tests) | 3074f9f + b188d1b | Dev-2 review T9-1..T9-4 fixed & re-verified | pending |
+| 9 | manual-pending | AUTOMATED GATE PASSED 2026-11-16 (regression 77/77; no automated tests) | 3074f9f + b188d1b + b96ce41 | Dev-2 review T9-1..T9-4 PASS; nits R1/R2 applied (R3 intentional) | pending |
 | 10 | todo | — | — | — | — |
 
 ## Decisions
