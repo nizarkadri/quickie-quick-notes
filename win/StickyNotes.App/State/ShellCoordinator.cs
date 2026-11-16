@@ -592,7 +592,15 @@ public sealed class ShellCoordinator : IDisposable
             return;
         }
 
-        _core.DeleteGroup(groupId); // cascade note delete happens inside the core
+        try
+        {
+            _core.DeleteGroup(groupId); // cascade note delete happens inside the core
+        }
+        catch (StickyCoreException ex) when (ex.Status == 1)
+        {
+            // Already gone (e.g. a fast double-click on Delete) — nothing to do.
+        }
+
         CloseList();
         RefreshBar();
     }

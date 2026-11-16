@@ -395,6 +395,7 @@ public partial class GroupListWindow : Window
         HeaderPanel.Visibility = Visibility.Visible;
         if (id.HasValue)
         {
+            _group = null; // group is being deleted — never keep a stale reference (double-delete guard)
             GroupDeleteConfirmed?.Invoke(id.Value);
         }
     }
