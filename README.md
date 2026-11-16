@@ -1,53 +1,124 @@
-# Acceptance tests for the Sticky Notes v1 blueprint
+# StickyNotes — auto-hiding sticky notes for Windows
 
-A feature/task is **done only when its gate passes**:
+A lightweight sticky-notes app that stays out of the way until you need it. Move your mouse to the **top-centre edge** of a monitor and a bookmark-bar-style strip slides down with your pinned notes, groups, recents, and a quick-capture **+**.
 
-    powershell -ExecutionPolicy Bypass -File .\scripts\gate.ps1 -Task N
+Built with a **Rust core** (SQLite + FFI) and a **C# WPF** UI — no Electron, no WebView, just native windows. ~20–45 MB idle, 0% CPU when hidden.
 
-The gate runs every automated test for tasks 1..N (so earlier work can't silently break), then you tick the
-matching section of `docs\MANUAL_ACCEPTANCE.md` (focus/window behavior can't be unit tested).
+---
 
-## Install
-Copy the folders into the repo root (they mirror the blueprint's tree), then:
+## Features
 
-1. `crates/sticky-core/Cargo.toml`: add `[dev-dependencies]` -> `tempfile = "3"`.
-2. `crates/sticky-core/src/lib.rs` must re-export: `StickyCore, CoreError, QuickCaptureTarget, PinnedItem, WindowContext` (and the model types).
-3. `win/StickyNotes.Tests`: reference xunit + the App project; add `<InternalsVisibleTo Include="StickyNotes.Tests" />` to the App csproj if types are internal.
-4. Copy `scripts/gate.ps1` next to `build.ps1`.
+- **Auto-hide trigger** — a subtle 100×4 notch at the top-centre of each monitor; hover ~180 ms to reveal the bar
+- **Pinned rail + Groups ▾ + Recents** — pin notes and groups, browse all groups, jump to recent notes
+- **Group lists** — click a group to open its vertical list with `+ New Note` at the top
+- **Quick capture (`+`)** — save standalone, into a group, or **append** to an existing note; `Ctrl+Enter` / click-outside commits, `Esc` discards
+- **Floating note windows** — click a note to open it beside the list; 350 ms autosave; click-outside gives a 5 s grace period (handy for copy/paste)
+- **Inline group management** — create, rename, pin/unpin, delete with an inline confirm (no modal dialogs)
+- **Multi-monitor & DPI aware** — PerMonitorV2, correct placement across mixed DPI and negative-coordinate monitors
+- **Tray app** — no taskbar or Alt+Tab entries; tray icon → Exit
+- **Single instance** — launching a second copy exits cleanly
 
-## Feature -> tests
+---
 
-| Task | Feature | Automated gate | Manual gate |
-|---|---|---|---|
-| 1 | Skeleton, build scripts, PerMonitorV2 | `gate.ps1 -Task 1` (build + manifest + dll copy checks) | - |
-| 2 | SQLite core: schema, CRUD, pin/group ordering, recents (max 5, no duplicates), delete cascade, quick-capture routing, append newline, persistence, thread safety | 5 files `t02_*.rs` (54 tests) | - |
-| 3 | FFI boundary: UTF-8, error codes, no leaks, 8-thread safety, dispose | `CoreFfiIntegrationTests.cs` | - |
-| 4 | DPI/multi-monitor placement, flip-left, clamping | `ScreenPositionerTests.cs` | - |
-| 5 | Trigger + bar: 180 ms dwell, 200 ms grace, fullscreen suppression, focus lock, 0 idle polling | `BarStateMachineTests.cs` | Task 5 (incl. **focus spike**) |
-| 6 | Group lists, group management | (covered by Task 2 core tests) | Task 6 |
-| 7 | Note window: 350 ms autosave, flush, empty-new-note cleanup | `NoteEditSessionTests` | Task 7 |
-| 8 | Quick note: Esc discards, Ctrl+Enter / click-outside commits, append | `QuickNoteSessionTests` | Task 8 |
-| 9 | Hotplug, DPI changes, single instance, clean exit | - | Task 9 |
-| 10 | End to end | all automated tests | Final gate |
+## Download
 
-## Things the blueprint must add (so these tests are possible)
-The blueprint doesn't define these pure-logic seams, and UI code can't be unit tested without them. Add one line to the
-Task 5/7/8 descriptions each; the exact contracts are in the header comment of each test file:
+Grab the latest build from the [Releases](../../releases) page.
 
-- `BarStateMachine` (+ `BarState`, `BarProbe`, `ShellAction`) - pure class extracted from `ShellCoordinator`, virtual clock. (Task 5)
-- `NoteEditSession` - debounce, flush, empty-new-note cleanup. (Task 7)
-- `QuickNoteSession` - Esc/Ctrl+Enter/click-outside commit rules. (Task 8)
+The download is a **self-contained win-x64 ZIP** — testers do **not** need .NET or Rust installed.
 
-## Names the tests assume (adapt to the real code ONLY so it compiles)
-`StickyCoreClient(string dbPath)`, `StickyCoreException.Status`, `QuickCaptureTarget.Standalone()/Group(id)/Append(id)`,
-`Note.UpdatedAtMs`, `PxRect/PxSize/MonitorBounds(PxRect Monitor, PxRect WorkArea)`, `ScreenPositioner`, plus the property
-names listed at the top of each test file.
+### Run without installing
+1. Extract the ZIP.
+2. Double-click `StickyNotes.App.exe`.
+3. Look for the StickyNotes icon in the system tray (click `^` if it's hidden).
 
-## Rules for the coding models
-- Do not edit, skip, `#[ignore]`, or loosen any assertion to make a task pass. If a test seems wrong or contradicts the blueprint, stop and ask.
-- Renaming types/constructors so the tests compile is allowed; changing expected values is not.
+### Install (optional)
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+Adds a Start Menu shortcut and an Add/Remove Programs entry (per-user, no admin). Uninstall with `.\uninstall.ps1` — your notes are kept unless you pass `-PurgeData`.
 
-## Honest caveats
-- These tests were written against the blueprint's spec, before any implementation exists, and have **not been compiled or run**. Expect a round of compile fixes (names, constructors) on first contact; that is normal and is the allowed kind of edit above.
-- Timing tests use a virtual clock with ~10 ms slack at boundaries, so they are deterministic; the leak test (20k calls, <40 MB growth) is the one threshold you may need to tune.
-- A green gate proves the logic; only the manual checklist proves focus behavior on a real desktop.
+---
+
+## How to use
+
+| Action | How |
+| --- | --- |
+| Show the bar | Move the mouse to the top-centre edge of a monitor and hold ~0.2 s |
+| Open a group | Click a group chip (or `Groups ▾` → group) |
+| Quick note | Click `+` → type → `Ctrl+Enter` / click outside to save, `Esc` to discard |
+| New note in a group | Open a group → `+ New Note` |
+| Pin / unpin | Right-click a chip |
+| Open a note | Click it in the bar or a group list |
+| Exit | Right-click the tray icon → Exit |
+
+Data lives in `%LOCALAPPDATA%\StickyNotes\sticky.db` (SQLite). Delete it to reset.
+
+---
+
+## Build from source
+
+**Prerequisites:** Windows 10 21H2+ / 11 (x64) · Rust 1.80+ (MSVC) · .NET SDK 8 · VS 2022 C++ Build Tools
+
+```powershell
+# Build everything (Rust core + C# UI) and stage the native dll
+powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1
+
+# Run all automated tests (54 Rust + 77 C# = 131)
+powershell -ExecutionPolicy Bypass -File .\scripts\test.ps1
+
+# Build a distributable ZIP -> dist\StickyNotes-<version>-win-x64.zip
+powershell -ExecutionPolicy Bypass -File .\scripts\package.ps1
+```
+
+Per-task gate (runs every automated test for tasks 1..N, so earlier work can't silently break):
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\gate.ps1 -Task N
+```
+
+---
+
+## Architecture
+
+```text
+crates/sticky-core/     Rust: SQLite schema/CRUD, pin & recents ordering, quick-capture routing, extern "C" FFI
+win/StickyNotes.App/    C# WPF: trigger / bar / group-list / note / quick-note windows, Win32 interop, DPI math
+win/StickyNotes.Tests/  xUnit: FFI round-trips, positioning, state machines, session logic
+scripts/                build / test / package / gate
+docs/                   manual acceptance checklist + testing map
+```
+
+- **Boundary:** hand-written `extern "C"` ABI + UTF-8 JSON DTOs (16 functions)
+- **Idle cost:** 0% CPU when hidden (no active timers), < 50 MB working set
+- **Tests:** 131 automated (54 Rust + 77 C#); focus/window behaviour is covered by the manual checklist
+
+See [`docs/TESTING.md`](docs/TESTING.md) for the task-by-task test/gate map.
+
+---
+
+## Roadmap
+
+**v1.0** (this release) — everything above.
+
+**v0.2 candidates** (deferred — see `PROGRESS.md` for the analysis):
+- Move an existing note into a new/existing group
+- Explicit note titles
+- Larger hover target (needs a design answer — the 100×4 trigger geometry is pinned by tests)
+- Hover a note to preview it
+- Hover a group to open its list (revisits the click-to-open design)
+
+**Out of scope for v1:** active-window detection / context-aware bar, app-directory mapping, macOS UI, cloud sync, search UI.
+
+---
+
+## Known limitations
+
+- Fullscreen suppression uses `SHQueryUserNotificationState` + a caption-less-borderless heuristic; some windowed video with a caption may not suppress the bar.
+- `AttachThreadInput` is blocked by UIPI against elevated windows — click inside an editor to activate it there.
+- Windows only.
+- Binaries are unsigned — SmartScreen may warn on first run (More info → Run anyway).
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).
