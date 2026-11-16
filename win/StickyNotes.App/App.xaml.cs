@@ -119,8 +119,12 @@ public partial class App : Application
     private void CreateTrayIcon()
     {
         // Message sink window; never shown (no WS_VISIBLE) — only receives WM_APP_TRAYICON.
+        // Message-only window (HWND_MESSAGE): invisible, never in the taskbar or Alt+Tab,
+        // but still receives the WM_APP_TRAYICON callback sent to its HWND.
         var parameters = new HwndSourceParameters("StickyNotesTraySink")
         {
+            ParentWindow = (IntPtr)(-3), // HWND_MESSAGE
+            WindowStyle = 0,
             Width = 0,
             Height = 0,
         };
