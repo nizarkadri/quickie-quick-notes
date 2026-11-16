@@ -49,8 +49,8 @@ Record the result (and the Windows build) next to each item.
 - [x] Sleep/wake and lock/unlock: the trigger still works. **(verified 2026-11-16)**
 
 ## Final end-to-end gate (Task 10)
-- [ ] `scripts\build.ps1` then `scripts\test.ps1` on a clean checkout: all green.
-- [ ] Terminal typing test: hover, click group, pin/unpin, open a note - not one keystroke dropped.
-- [ ] Quick capture + append: `git reflog` appended to an existing note with a single newline; target is #1 in Recents; focus returns to Terminal.
-- [ ] Create a note and press Esc immediately: no ghost note. Delete a group with 2 notes (one pinned): prompt says "2 notes", everything is removed, state persists after restart.
-- [ ] Idle for 60 s: Task Manager shows 0.0% CPU and < 50 MB working set.
+- [x] `scripts\build.ps1` then `scripts\test.ps1` on a clean checkout: all green. **(verified 2026-11-16: build exit 0; 54 Rust + 77 C# = 131 tests green)**
+- [x] Terminal typing test: hover, click group, pin/unpin, open a note - not one keystroke dropped. **(verified 2026-11-16)**
+- [x] Quick capture + append: `git reflog` appended to an existing note with a single newline; target is #1 in Recents; focus returns to Terminal. **(verified 2026-11-16)**
+- [x] Create a note and press Esc immediately: no ghost note. Delete a group with 2 notes (one pinned): prompt says "2 notes", everything is removed, state persists after restart. **(verified 2026-11-16)**
+- [x] Idle for 60 s: Task Manager shows 0.0% CPU and < 50 MB working set. **(verified 2026-11-16)**

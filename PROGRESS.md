@@ -52,7 +52,7 @@ Parallelizable: **only Task 2 and Task 4**, both after Task 1.
 | 7+8 | done | AUTOMATED GATE PASSED 2026-11-16 (Task=3\|4\|5\|7\|8 77/77) | c7a8274 + 89785b3 + c4305ca (5s grace) | Dev-2 re-review 9/9 PASS; MANUAL signed off 2026-11-16 (all pass) | n/a |
 | 9 | done | AUTOMATED GATE PASSED 2026-11-16 (regression 77/77; no automated tests) | 3074f9f + b188d1b + b96ce41 | Dev-2 review T9-1..T9-4 PASS; MANUAL signed off 2026-11-16 (all pass) | n/a |
 | F1-F5 | deferred (v0.2) | — | — | human deferred ALL five 2026-11-16: move-note-to-group (F1), note titles (F2), larger hover target (F3, blocked by pinned 100x4 trigger tests), hover note preview (F4), hover-to-open groups (F5, reverses blueprint 1) | — |
-| 10 | manual-pending | build.ps1 exit 0 + test.ps1 exit 0 on CLEAN tree (2026-11-16): Rust 54/54, C# 77/77 = 131 automated tests green | (pending) | stickyDev-1 QA; final end-to-end checklist pending | pending |
+| 10 | done | build.ps1 + test.ps1 exit 0 on CLEAN tree (2026-11-16): Rust 54/54, C# 77/77 = 131 automated | 6693af0 | all tasks 1-9 done; MANUAL final checklist signed off 2026-11-16 | n/a |
 
 ## Decisions
 - **2026-11-16 — Five post-v1 features DEFERRED to v0.2 (human ruling).** Requested: (F1) move an existing note into a new/existing group; (F2) explicit note titles; (F3) double the hover target area while keeping it centered; (F4) hover a note to preview it; (F5) hover a group to open its note list. Deferred after risk review, NOT implemented in v1. Analysis recorded for v0.2:
