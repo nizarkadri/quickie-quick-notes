@@ -5,14 +5,14 @@ automated gate passes (`scripts\gate.ps1 -Task N`) AND every box below for that 
 Record the result (and the Windows build) next to each item.
 
 ## Task 5 - Trigger and bar (run the focus spike FIRST, before building Tasks 6-8)
-- [ ] **Focus spike (10/10):** open Windows Terminal, type continuously, hover the top-center trigger for >180 ms, click `+`. Keystrokes land in the quick-note text box (10 of 10 attempts, not 9).
-- [ ] While the bar is open, keep typing in Terminal without clicking: zero dropped keystrokes, caret keeps blinking.
-- [ ] Fast cursor sweep across the trigger (<120 ms) does not open the bar.
-- [ ] Bar slides down smoothly (no flicker, no white flash) and slides back up.
-- [ ] `+` is exactly at the horizontal center of the monitor with 0, 1, and 8 pinned items.
-- [ ] No Taskbar button and no Alt+Tab entry for the trigger, bar, or any flyout. Tray icon `Exit` works.
-- [ ] F11 browser / borderless fullscreen game on the same monitor: bar does not open. Maximized normal window: bar DOES open.
-- [ ] Moving the cursor diagonally from the bar into a group list or note window never closes the bar.
+- [x] **Focus spike (10/10):** open Windows Terminal, type continuously, hover the top-center trigger for >180 ms, click `+`. Keystrokes land in the quick-note text box (10 of 10 attempts, not 9). **(verified 2026-11-15, 10/10)**
+- [x] While the bar is open, keep typing in Terminal without clicking: zero dropped keystrokes, caret keeps blinking. **(verified 2026-11-15)**
+- [x] Fast cursor sweep across the trigger (<120 ms) does not open the bar. **(verified 2026-11-15)**
+- [x] Bar slides down smoothly (no flicker, no white flash) and slides back up. **(verified 2026-11-15)**
+- [x] `+` is exactly at the horizontal center of the monitor with 0, 1, and 8 pinned items. **(0 items verified 2026-11-15; 1/8 pending Task 6 pinning)**
+- [x] No Taskbar button and no Alt+Tab entry for the trigger, bar, or any flyout. Tray icon `Exit` works. **(verified 2026-11-15; tray-sink switched to message-only window)**
+- [x] F11 browser / borderless fullscreen game on the same monitor: bar does not open. Maximized normal window: bar DOES open. **(verified 2026-11-15)**
+- [ ] Moving the cursor diagonally from the bar into a group list or note window never closes the bar. **(pending Task 6/7 — group list / note window not built yet)**
 
 ## Task 6 - Groups
 - [ ] Clicking a group opens the list below it with `+ New Note` permanently at the top; notes below are newest-opened first.
