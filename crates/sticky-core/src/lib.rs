@@ -24,5 +24,6 @@ pub mod models;
 pub use crate::core::StickyCore;
 pub use crate::errors::CoreError;
 pub use crate::models::{
-    BarSnapshot, GroupSummary, Note, NoteSummary, PinnedItem, QuickCaptureTarget, WindowContext,
+    BarSnapshot, GroupSummary, Note, NoteSort, NoteSummary, PinnedItem, QuickCaptureTarget,
+    WindowContext,
 };

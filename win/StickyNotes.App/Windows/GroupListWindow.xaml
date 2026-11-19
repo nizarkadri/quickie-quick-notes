@@ -30,6 +30,7 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />   <!-- OpenAllNotes sort toggle -->
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
@@ -55,8 +56,21 @@
                            FontWeight="SemiBold"
                            VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis" />
-                <Button x:Name="PinToggleButton"
+                <!-- OpenAllNotes only: flips Date / A→Z. Label + tooltip are set in RenderAllNotesMode. -->
+                <Button x:Name="SortButton"
                         Grid.Column="2"
+                        Height="24"
+                        Padding="8,0"
+                        Content="Date ↓"
+                        FontSize="11"
+                        Foreground="#9CDCFE"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Cursor="Hand"
+                        Click="OnSortClick"
+                        Visibility="Collapsed" />
+                <Button x:Name="PinToggleButton"
+                        Grid.Column="3"
                         Width="28"
                         Height="28"
                         Content="📌"
@@ -67,7 +81,7 @@
                         Cursor="Hand"
                         Click="OnPinToggleClick" />
                 <Button x:Name="RenameButton"
-                        Grid.Column="3"
+                        Grid.Column="4"
                         Width="28"
                         Height="28"
                         Content="✎"
@@ -79,7 +93,7 @@
                         Cursor="Hand"
                         Click="OnRenameClick" />
                 <Button x:Name="DeleteButton"
-                        Grid.Column="4"
+                        Grid.Column="5"
                         Width="28"
                         Height="28"
                         Content="🗑"
@@ -90,7 +104,7 @@
                         Cursor="Hand"
                         Click="OnDeleteClick" />
                 <Button x:Name="CloseButton"
-                        Grid.Column="5"
+                        Grid.Column="6"
                         Width="28"
                         Height="28"
                         Content="×"

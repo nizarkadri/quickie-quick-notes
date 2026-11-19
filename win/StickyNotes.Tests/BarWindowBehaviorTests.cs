@@ -59,11 +59,12 @@ public class BarWindowBehaviorTests
                 var recentPanel = (StackPanel)WinWindowTestSupport.FindByName(win, "RecentPanel");
 
                 Assert.Equal(3, pinnedPanel.Children.Count); // pinned note + group + trailing 'Groups ▾'
-                Assert.Equal(2, recentPanel.Children.Count); // pinned recents are not duplicated into the rail
+                Assert.Equal(3, recentPanel.Children.Count); // two note chips (pinned recents are not duplicated) + the all-notes arrow
                 var tags = Chips(win).Keys;
                 Assert.Contains("note:1", tags);
                 Assert.Contains("group:9", tags);
                 Assert.Contains("groups-menu", tags);
+                Assert.Contains("all-notes", tags); // the way back to notes the recents dropped
                 Assert.Contains("note:2", tags);
                 Assert.Contains("note:4", tags);
                 Assert.DoesNotContain("note:3", tags); // pinned: lives in the rail only

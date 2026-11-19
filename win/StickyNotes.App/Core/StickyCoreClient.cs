@@ -70,6 +70,9 @@ public sealed class StickyCoreClient : IStickyCoreClient
         return InvokeJson<List<NoteSummary>>(h => NativeCoreMethods.sn_list_append_targets(h, (uint)limit));
     }
 
+    public IReadOnlyList<NoteSummary> ListAllNotes(NoteSort sort) =>
+        InvokeJson<List<NoteSummary>>(h => NativeCoreMethods.sn_list_all_notes(h, (uint)sort));
+
     public Note GetNote(long noteId, bool markOpened) =>
         InvokeJson<Note>(h => NativeCoreMethods.sn_get_note(h, noteId, markOpened));
 

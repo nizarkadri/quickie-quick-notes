@@ -70,6 +70,26 @@ pub enum QuickCaptureTarget {
     Append { note_id: i64 },
 }
 
+/// Sort order for the "All notes" dropdown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoteSort {
+    /// Most recently opened first.
+    Recent,
+    /// Title A→Z (case-insensitive), ties broken by most recently opened.
+    Alphabetical,
+}
+
+impl NoteSort {
+    /// FFI `sort_mode` code. An unknown code is a validation error, never a silent fallback.
+    pub fn from_code(code: u32) -> Option<Self> {
+        match code {
+            0 => Some(NoteSort::Recent),
+            1 => Some(NoteSort::Alphabetical),
+            _ => None,
+        }
+    }
+}
+
 /// Reserved v2 seam: v1 ignores it entirely (blueprint §5).
 #[derive(Debug, Default, Clone)]
 pub struct WindowContext {

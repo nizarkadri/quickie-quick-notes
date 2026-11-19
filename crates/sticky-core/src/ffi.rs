@@ -20,7 +20,7 @@ use serde::Serialize;
 
 use crate::core::StickyCore;
 use crate::errors::CoreError;
-use crate::models::QuickCaptureTarget;
+use crate::models::{NoteSort, QuickCaptureTarget};
 
 // ---------------------------------------------------------------------------
 // C-visible types
@@ -227,6 +227,31 @@ pub extern "C" fn sn_list_append_targets(handle: *mut StickyCoreHandle, limit: u
             Err(error) => return err(error),
         };
         match core.list_append_targets(limit as usize) {
+            Ok(notes) => ok_json(&notes),
+            Err(error) => err(error),
+        }
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn sn_list_all_notes(
+    handle: *mut StickyCoreHandle,
+    sort_mode: u32,
+) -> FfiResult {
+    guarded(|| {
+        let core = match unsafe { core_ref(handle) } {
+            Ok(core) => core,
+            Err(error) => return err(error),
+        };
+        let sort = match NoteSort::from_code(sort_mode) {
+            Some(sort) => sort,
+            None => {
+                return err(CoreError::Validation(format!(
+                    "unknown sort mode {sort_mode}"
+                )))
+            }
+        };
+        match core.list_all_notes(sort) {
             Ok(notes) => ok_json(&notes),
             Err(error) => err(error),
         }

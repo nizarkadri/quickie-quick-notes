@@ -1,4 +1,4 @@
-// F6 gate - ShellCoordinator wiring around the group list (responsible for the "list closed
+﻿// F6 gate - ShellCoordinator wiring around the group list (responsible for the "list closed
 // when I opened the note" bug class). Real ShellCoordinator, real StickyCoreClient, real
 // monitors; private members are reached via reflection; nothing here edits production code.
 using System.Reflection;
@@ -41,7 +41,7 @@ public class ShellCoordinatorContextMenuTests
                 WinWindowTestSupport.Pump();
 
                 // Open the group's list the way a 'group:{id}' chip click does.
-                InvokePrivate(coordinator, "ToggleList", "group:" + group.Id, false, (long?)group.Id);
+                InvokePrivate(coordinator, "ToggleList", "group:" + group.Id, GroupListMode.OpenGroup, (long?)group.Id);
                 WinWindowTestSupport.Pump();
 
                 var list = (GroupListWindow)PrivateField(coordinator, "_list")!;
@@ -77,7 +77,7 @@ public class ShellCoordinatorContextMenuTests
                 bar.ShowOnMonitor(Bounds, nint.Zero, WinWindowTestSupport.ActualDpi(bar));
                 WinWindowTestSupport.Pump();
 
-                InvokePrivate(coordinator, "ToggleList", "group:" + group.Id, false, (long?)group.Id);
+                InvokePrivate(coordinator, "ToggleList", "group:" + group.Id, GroupListMode.OpenGroup, (long?)group.Id);
                 WinWindowTestSupport.Pump();
                 var list = (GroupListWindow)PrivateField(coordinator, "_list")!;
                 Assert.Equal(Visibility.Visible, list.Visibility);
@@ -92,7 +92,7 @@ public class ShellCoordinatorContextMenuTests
                 Assert.Null(PrivateField(coordinator, "_openListAnchorTag"));
 
                 // Clicking the chip again re-opens the list instead of toggling it shut.
-                InvokePrivate(coordinator, "ToggleList", "group:" + group.Id, false, (long?)group.Id);
+                InvokePrivate(coordinator, "ToggleList", "group:" + group.Id, GroupListMode.OpenGroup, (long?)group.Id);
                 WinWindowTestSupport.Pump();
                 Assert.Equal(Visibility.Visible, list.Visibility);
             }

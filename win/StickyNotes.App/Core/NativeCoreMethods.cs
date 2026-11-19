@@ -49,6 +49,10 @@ internal static class NativeCoreMethods
     [DllImport(Dll, CallingConvention = Cdecl)]
     internal static extern FfiResult sn_list_append_targets(IntPtr handle, uint limit);
 
+    /// <summary>Sort mode: 0 = Recent, 1 = Alphabetical (must match the Rust NoteSort codes).</summary>
+    [DllImport(Dll, CallingConvention = Cdecl)]
+    internal static extern FfiResult sn_list_all_notes(IntPtr handle, uint sortMode);
+
     [DllImport(Dll, CallingConvention = Cdecl)]
     internal static extern FfiResult sn_get_note(
         IntPtr handle,

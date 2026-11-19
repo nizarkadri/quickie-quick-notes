@@ -124,6 +124,12 @@ public partial class BarWindow : Window
 
             RecentPanel.Children.Add(BuildChip("note:" + note.Id, note.TitlePreview, strikePinned: false));
         }
+
+        // The recents only ever show five, so a note that falls out of the rail and off the recents is
+        // otherwise unreachable unless it is grouped. This arrow is the way back to all of them.
+        Button allNotes = BuildChip("all-notes", "▾", strikePinned: false);
+        allNotes.ToolTip = "All notes";
+        RecentPanel.Children.Add(allNotes);
     }
 
     /// <summary>Physical-pixel rect of the chip with the given tag; default when the chip doesn't exist or the bar is hidden.</summary>

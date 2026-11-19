@@ -185,6 +185,19 @@ public sealed record BarSnapshot
 }
 
 /// <summary>
+/// Sort order for the "All notes" dropdown. Wire values MUST match <c>NoteSort::from_code</c> in
+/// <c>crates/sticky-core/src/models.rs</c> — an unknown code is a core validation error, not a fallback.
+/// </summary>
+public enum NoteSort
+{
+    /// Most recently opened first.
+    Recent = 0,
+
+    /// Title A→Z (case-insensitive), ties broken by most recently opened.
+    Alphabetical = 1,
+}
+
+/// <summary>
 /// Serializes to the Rust <c>QuickCaptureTarget</c> serde representation:
 /// <c>{"mode":"standalone"}</c>, <c>{"mode":"group","group_id":N}</c>,
 /// <c>{"mode":"append","note_id":N}</c>.
@@ -235,6 +248,9 @@ public interface IStickyCoreClient : IDisposable
     BarSnapshot GetBarSnapshot();
     IReadOnlyList<NoteSummary> ListGroupNotes(long groupId);
     IReadOnlyList<NoteSummary> ListAppendTargets(int limit = 30);
+
+    /// <summary>Every note (pinned included) for the "All notes" dropdown, in the requested order.</summary>
+    IReadOnlyList<NoteSummary> ListAllNotes(NoteSort sort);
     Note GetNote(long noteId, bool markOpened);
     Note CreateNote(long? groupId, string body = "");
     NoteSummary UpdateNoteBody(long noteId, string body);

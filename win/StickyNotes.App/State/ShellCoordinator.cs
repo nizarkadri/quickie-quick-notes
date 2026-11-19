@@ -42,6 +42,7 @@ public sealed class ShellCoordinator : IDisposable
     private BarSnapshot? _lastSnapshot;
     private string? _openListAnchorTag; // anchor tag of the currently-open GroupListWindow ("groups-menu" | "group:{id}")
     private bool _listOpenedByHover;    // the open dropdown appeared from a hover dwell (not a click): a click on the chip keeps it open
+    private NoteSort _allNotesSort = NoteSort.Recent; // the all-notes dropdown's order, remembered between opens
     private ContextMenu? _activeMenu;   // F6: the open note/group menu (keeps the bar alive; self-heals via IsOpen)
 
     private NoteWindow? _noteWindow;       // max 1 open — opening a second flushes + replaces the first
@@ -129,6 +130,7 @@ public sealed class ShellCoordinator : IDisposable
         _list.GroupDeleteConfirmed += OnListGroupDeleteConfirmed;
         _list.ContextMenuRequested += OnListContextMenuRequested;
         _list.CloseRequested += (_, _) => CloseList();
+        _list.SortToggleRequested += OnAllNotesSortToggled;
         _list.InlineEditStarted += (_, _) => Machine.EditorFocused();
         _list.InlineEditEnded += (_, _) =>
         {
@@ -837,7 +839,7 @@ public sealed class ShellCoordinator : IDisposable
         {
             if (fromBar)
             {
-                ToggleList($"group:{groupId}", openAllGroups: false, groupId);
+                ToggleList($"group:{groupId}", GroupListMode.OpenGroup, groupId);
             }
             else if (_list.Mode == GroupListMode.OpenAllGroups)
             {
@@ -1160,6 +1162,41 @@ public sealed class ShellCoordinator : IDisposable
         {
             _list.RefreshAllGroups(GroupsSorted());
         }
+        else if (_list.Mode == GroupListMode.OpenAllNotes)
+        {
+            _list.RefreshAllNotes(LoadAllNotes(_allNotesSort), _allNotesSort);
+        }
+    }
+
+    /// <summary>Every note (pinned included) for the all-notes dropdown. A core failure yields an empty list rather than a crash.</summary>
+    private IReadOnlyList<NoteSummary> LoadAllNotes(NoteSort sort)
+    {
+        if (_core is null)
+        {
+            return Array.Empty<NoteSummary>();
+        }
+
+        try
+        {
+            return _core.ListAllNotes(sort);
+        }
+        catch (StickyCoreException ex)
+        {
+            System.Diagnostics.Trace.WriteLine($"ListAllNotes failed ({ex.Status}): {ex.Message}");
+            return Array.Empty<NoteSummary>();
+        }
+        catch (ObjectDisposedException)
+        {
+            return Array.Empty<NoteSummary>(); // shutdown raced the open
+        }
+    }
+
+    /// <summary>The all-notes dropdown flipped Date ↔ A→Z: re-query in place, list stays open.</summary>
+    private void OnAllNotesSortToggled(NoteSort sort)
+    {
+        _allNotesSort = sort;
+        _list.RefreshAllNotes(LoadAllNotes(_allNotesSort), _allNotesSort);
+        PublishSurfaces(Win32.DpiScaleOf(_bar.HMonitor) ?? 1.0);
     }
 
     // ------------------------------------------------------------------ bar & group list
@@ -1193,7 +1230,11 @@ public sealed class ShellCoordinator : IDisposable
     {
         OnCursorEnteredApp(); // a click on the bar is inside: cancel any in-flight fade now, not on the next poll
         string tag = e.Tag;
-        if (tag == "groups-menu")
+        if (tag == "all-notes")
+        {
+            ToggleList("all-notes", GroupListMode.OpenAllNotes, null);
+        }
+        else if (tag == "groups-menu")
         {
             if (_openListAnchorTag == "groups-menu" && _list.Mode == GroupListMode.OpenAllGroups && _listOpenedByHover)
             {
@@ -1204,12 +1245,12 @@ public sealed class ShellCoordinator : IDisposable
                 return;
             }
 
-            ToggleList("groups-menu", openAllGroups: true, groupId: null);
+            ToggleList("groups-menu", GroupListMode.OpenAllGroups, null);
         }
         else if (tag.StartsWith("group:", StringComparison.Ordinal)
                  && long.TryParse(tag.AsSpan("group:".Length), out long groupId))
         {
-            ToggleList(tag, openAllGroups: false, groupId);
+            ToggleList(tag, GroupListMode.OpenGroup, groupId);
         }
         else if (tag.StartsWith("note:", StringComparison.Ordinal)
                  && long.TryParse(tag.AsSpan("note:".Length), out long noteId))
@@ -1221,7 +1262,7 @@ public sealed class ShellCoordinator : IDisposable
         }
     }
 
-    private void ToggleList(string anchorTag, bool openAllGroups, long? groupId)
+    private void ToggleList(string anchorTag, GroupListMode mode, long? groupId)
     {
         if (_openListAnchorTag == anchorTag)
         {
@@ -1229,11 +1270,11 @@ public sealed class ShellCoordinator : IDisposable
             return;
         }
 
-        ShowList(anchorTag, openAllGroups, groupId);
+        ShowList(anchorTag, mode, groupId);
     }
 
     /// <summary>Open the dropdown on <paramref name="anchorTag"/> (no toggle semantics — hover-open uses this).</summary>
-    private void ShowList(string anchorTag, bool openAllGroups, long? groupId)
+    private void ShowList(string anchorTag, GroupListMode mode, long? groupId)
     {
         if (!TryGetAnchorAndBounds(anchorTag, out PxRect anchorRect, out MonitorBounds bounds, out double dpi))
         {
@@ -1242,19 +1283,30 @@ public sealed class ShellCoordinator : IDisposable
 
         _listOpenedByHover = false; // a fresh, click-anchored open always starts non-hover
 
-        if (openAllGroups)
+        switch (mode)
         {
-            _list.ShowAllGroups(GroupsSorted());
-        }
-        else if (groupId.HasValue)
-        {
-            GroupSummary? group = FindGroup(groupId.Value);
-            if (group is null)
-            {
-                return;
-            }
+            case GroupListMode.OpenAllGroups:
+                _list.ShowAllGroups(GroupsSorted());
+                break;
 
-            _list.ShowGroup(group, GroupNotesSorted(groupId.Value));
+            case GroupListMode.OpenAllNotes:
+                _list.ShowAllNotes(LoadAllNotes(_allNotesSort), _allNotesSort);
+                break;
+
+            default:
+                if (!groupId.HasValue)
+                {
+                    return;
+                }
+
+                GroupSummary? group = FindGroup(groupId.Value);
+                if (group is null)
+                {
+                    return;
+                }
+
+                _list.ShowGroup(group, GroupNotesSorted(groupId.Value));
+                break;
         }
 
         _list.PositionAndShow(anchorRect, bounds, dpi);
@@ -1442,7 +1494,7 @@ public sealed class ShellCoordinator : IDisposable
         }
 
         OnCursorEnteredApp();
-        ShowList("groups-menu", openAllGroups: true, groupId: null);
+        ShowList("groups-menu", GroupListMode.OpenAllGroups, null);
         _listOpenedByHover = _openListAnchorTag == "groups-menu"; // keep-open-on-click applies only to this hover-opened list
     }
 

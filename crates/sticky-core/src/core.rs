@@ -1,5 +1,6 @@
 //! Thread-safe domain API: a single `Mutex<Connection>` behind arbitrary C# threads.
 
+use std::cmp::Reverse;
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -9,7 +10,8 @@ use rusqlite::{params, Connection, OptionalExtension};
 use crate::db::{self, GROUP_COLUMNS, NOTE_COLUMNS, SUMMARY_COLUMNS};
 use crate::errors::CoreError;
 use crate::models::{
-    BarSnapshot, GroupSummary, Note, NoteSummary, PinnedItem, QuickCaptureTarget, WindowContext,
+    BarSnapshot, GroupSummary, Note, NoteSort, NoteSummary, PinnedItem, QuickCaptureTarget,
+    WindowContext,
 };
 
 /// Bar Recents: "Max 5" (blueprint §6).
@@ -127,6 +129,39 @@ impl StickyCore {
         let notes = stmt
             .query_map([limit as i64], db::summary_from_row)?
             .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(notes)
+    }
+
+    ///
+    /// Every note (pinned included) for the "All notes" dropdown. Recents only shows five, so without
+    /// this a note that falls out of the rail and off the recents is unreachable unless it is grouped.
+    ///
+    /// Sorted in Rust rather than SQL because the A→Z key is `title_preview` — the first non-empty line
+    /// of the body — which is derived, not a column. Ties fall back to newest-first so the order is
+    /// stable between refreshes.
+    pub fn list_all_notes(&self, sort: NoteSort) -> Result<Vec<NoteSummary>, CoreError> {
+        let conn = self.lock()?;
+
+        let sql = format!("SELECT {SUMMARY_COLUMNS} FROM notes");
+        let mut stmt = conn.prepare(&sql)?;
+        let mut notes = stmt
+            .query_map([], db::summary_from_row)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        drop(stmt);
+
+        match sort {
+            NoteSort::Recent => {
+                notes.sort_by_cached_key(|n| (Reverse(n.last_opened_at_ms), Reverse(n.id)))
+            }
+            NoteSort::Alphabetical => notes.sort_by_cached_key(|n| {
+                (
+                    n.title_preview.to_lowercase(),
+                    Reverse(n.last_opened_at_ms),
+                    Reverse(n.id),
+                )
+            }),
+        }
+
         Ok(notes)
     }
 

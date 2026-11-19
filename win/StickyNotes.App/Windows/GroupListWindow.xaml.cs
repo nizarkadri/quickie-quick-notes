@@ -19,6 +19,9 @@ public enum GroupListMode
 {
     OpenGroup,
     OpenAllGroups,
+
+    /// <summary>Every note (pinned included), sortable Date / A→Z — the "old notes are gone" escape hatch.</summary>
+    OpenAllNotes,
 }
 
 /// <summary>
@@ -103,6 +106,9 @@ public partial class GroupListWindow : Window
     private InlineEditPurpose _editPurpose = InlineEditPurpose.None;
     private bool _editing;
 
+    /// <summary>OpenAllNotes: the order currently rendered, and the one a sort toggle flips from.</summary>
+    private NoteSort _sort = NoteSort.Recent;
+
     /// <summary>The '+ New Note' permanent row (OpenGroup) was clicked. Rect = screen rect of the row (note window anchor).</summary>
     public event Action<long, PxRect>? NewNoteRequested;
 
@@ -135,6 +141,9 @@ public partial class GroupListWindow : Window
 
     /// <summary>F6: the header close button was pressed — coordinator clears the anchor and hides the list.</summary>
     public event EventHandler? CloseRequested;
+
+    /// <summary>OpenAllNotes: the user flipped Date ↔ A→Z. The coordinator re-queries and re-renders.</summary>
+    public event Action<NoteSort>? SortToggleRequested;
 
     public GroupListWindow()
     {
@@ -192,10 +201,19 @@ public partial class GroupListWindow : Window
         RenderAllGroupsMode(allGroups);
     }
 
+    /// <summary>OpenAllNotes: every note, pinned included, in <paramref name="sort"/> order.</summary>
+    public void ShowAllNotes(IReadOnlyList<NoteSummary> notes, NoteSort sort)
+    {
+        _mode = GroupListMode.OpenAllNotes;
+        RenderAllNotesMode(notes, sort);
+    }
+
     /// <summary>Re-render after data changed under us (list stays open).</summary>
     public void RefreshGroup(GroupSummary group, IReadOnlyList<NoteSummary> notes) => RenderGroupMode(group, notes);
 
     public void RefreshAllGroups(IReadOnlyList<GroupSummary> allGroups) => RenderAllGroupsMode(allGroups);
+
+    public void RefreshAllNotes(IReadOnlyList<NoteSummary> notes, NoteSort sort) => RenderAllNotesMode(notes, sort);
 
     /// <summary>v0.2.2+: the pointer entered/left a GROUP ROW in OpenAllGroups mode, or a row's 180ms dwell completed. Inside=false on leave; the row rect is physical px (valid while inside). DwellReady=true fires ONCE per uninterrupted dwell from the window's own 50ms poll (the coordinator tick cannot be relied on: a pointer that SITS on a row raises no further events).</summary>
     public event EventHandler<GroupListRowHoverEventArgs>? GroupRowHover;
@@ -243,6 +261,7 @@ public partial class GroupListWindow : Window
         ConfirmPanel.Visibility = Visibility.Collapsed;
         HeaderTitle.Text = group.Name;
         NewGroupButton.Visibility = Visibility.Collapsed;
+        SortButton.Visibility = Visibility.Collapsed;
         PinToggleButton.Visibility = Visibility.Visible;
         RenameButton.Visibility = Visibility.Visible;
         DeleteButton.Visibility = Visibility.Visible;
@@ -267,6 +286,7 @@ public partial class GroupListWindow : Window
         ConfirmPanel.Visibility = Visibility.Collapsed;
         HeaderTitle.Text = "Groups";
         NewGroupButton.Visibility = Visibility.Visible;
+        SortButton.Visibility = Visibility.Collapsed;
         PinToggleButton.Visibility = Visibility.Collapsed;
         RenameButton.Visibility = Visibility.Collapsed;
         DeleteButton.Visibility = Visibility.Collapsed;
@@ -279,6 +299,47 @@ public partial class GroupListWindow : Window
         {
             RowsPanel.Children.Add(BuildGroupRow(g));
         }
+    }
+
+    /// <summary>
+    /// OpenAllNotes: one flat row per note. Rows are reused verbatim from OpenGroup, so the hover
+    /// preview, the right-click context menu and the click-to-open wiring all behave identically.
+    /// </summary>
+    private void RenderAllNotesMode(IReadOnlyList<NoteSummary> notes, NoteSort sort)
+    {
+        _group = null;
+        _sort = sort;
+
+        HeaderPanel.Visibility = Visibility.Visible;
+        ConfirmPanel.Visibility = Visibility.Collapsed;
+        HeaderTitle.Text = "All notes";
+        NewGroupButton.Visibility = Visibility.Collapsed;
+        SortButton.Visibility = Visibility.Visible;
+        SortButton.Content = sort == NoteSort.Alphabetical ? "A→Z" : "Date ↓";
+        ToolTipService.SetToolTip(
+            SortButton,
+            sort == NoteSort.Alphabetical
+                ? "Sorted A→Z — click for newest first"
+                : "Sorted newest first — click for A→Z");
+        PinToggleButton.Visibility = Visibility.Collapsed;
+        RenameButton.Visibility = Visibility.Collapsed;
+        DeleteButton.Visibility = Visibility.Collapsed;
+        NewNoteButton.Visibility = Visibility.Collapsed;
+
+        CloseTips();
+        ResetRowHover();
+        RowsPanel.Children.Clear();
+        foreach (NoteSummary note in notes)
+        {
+            RowsPanel.Children.Add(BuildNoteRow(note));
+        }
+    }
+
+    /// <summary>OpenAllNotes: flip the order and let the coordinator re-query and re-render.</summary>
+    private void OnSortClick(object sender, RoutedEventArgs e)
+    {
+        _sort = _sort == NoteSort.Alphabetical ? NoteSort.Recent : NoteSort.Alphabetical;
+        SortToggleRequested?.Invoke(_sort);
     }
 
     private Button BuildNoteRow(NoteSummary note)
