@@ -1178,7 +1178,7 @@ public sealed class ShellCoordinator : IDisposable
 
         try
         {
-            return _core.ListAllNotes(sort);
+            return _core.ListUnpinnedNotes(sort);
         }
         catch (StickyCoreException ex)
         {
@@ -1232,20 +1232,11 @@ public sealed class ShellCoordinator : IDisposable
         string tag = e.Tag;
         if (tag == "all-notes")
         {
-            ToggleList("all-notes", GroupListMode.OpenAllNotes, null);
+            ToggleListOrKeepOpen("all-notes", GroupListMode.OpenAllNotes);
         }
         else if (tag == "groups-menu")
         {
-            if (_openListAnchorTag == "groups-menu" && _list.Mode == GroupListMode.OpenAllGroups && _listOpenedByHover)
-            {
-                // The dropdown is already there because the cursor dwelt on this chip: a click keeps it
-                // open (closing it under the same pointer would feel like a double-action). The flag is
-                // consumed, so the NEXT click toggles it closed as usual.
-                _listOpenedByHover = false;
-                return;
-            }
-
-            ToggleList("groups-menu", GroupListMode.OpenAllGroups, null);
+            ToggleListOrKeepOpen("groups-menu", GroupListMode.OpenAllGroups);
         }
         else if (tag.StartsWith("group:", StringComparison.Ordinal)
                  && long.TryParse(tag.AsSpan("group:".Length), out long groupId))
@@ -1271,6 +1262,22 @@ public sealed class ShellCoordinator : IDisposable
         }
 
         ShowList(anchorTag, mode, groupId);
+    }
+
+    /// <summary>
+    /// A click on a chip that owns a hover-opened dropdown. If the list is already there because the
+    /// cursor DWELLED on this chip, the click keeps it open — closing it under the same pointer would
+    /// feel like a double-action. The flag is consumed, so the NEXT click toggles it shut as usual.
+    /// </summary>
+    private void ToggleListOrKeepOpen(string anchorTag, GroupListMode mode)
+    {
+        if (_openListAnchorTag == anchorTag && _list.Mode == mode && _listOpenedByHover)
+        {
+            _listOpenedByHover = false;
+            return;
+        }
+
+        ToggleList(anchorTag, mode, null);
     }
 
     /// <summary>Open the dropdown on <paramref name="anchorTag"/> (no toggle semantics — hover-open uses this).</summary>
@@ -1483,19 +1490,33 @@ public sealed class ShellCoordinator : IDisposable
     /// </summary>
     private void OnChipHovered(object? sender, Windows.BarChipHoverEventArgs e)
     {
-        if (_disposed || !e.DwellReady || e.Tag != "groups-menu")
+        if (_disposed || !e.DwellReady)
         {
             return;
         }
 
-        if (_openListAnchorTag == "groups-menu" && _list.Mode == GroupListMode.OpenAllGroups)
+        // Only chips that own a dropdown: 'Groups ▾' and the all-notes arrow. A note or a group chip
+        // ignores the dwell.
+        (string AnchorTag, GroupListMode Mode)? target = e.Tag switch
+        {
+            "groups-menu" => ("groups-menu", GroupListMode.OpenAllGroups),
+            "all-notes" => ("all-notes", GroupListMode.OpenAllNotes),
+            _ => null,
+        };
+
+        if (target is not { } t)
+        {
+            return;
+        }
+
+        if (_openListAnchorTag == t.AnchorTag && _list.Mode == t.Mode)
         {
             return; // already showing exactly this dropdown — never rebuild it under the cursor
         }
 
         OnCursorEnteredApp();
-        ShowList("groups-menu", GroupListMode.OpenAllGroups, null);
-        _listOpenedByHover = _openListAnchorTag == "groups-menu"; // keep-open-on-click applies only to this hover-opened list
+        ShowList(t.AnchorTag, t.Mode, null);
+        _listOpenedByHover = _openListAnchorTag == t.AnchorTag; // keep-open-on-click applies only to this hover-opened list
     }
 
     private void OnListGroupPinToggled(long groupId) => ToggleGroupPinned(groupId);

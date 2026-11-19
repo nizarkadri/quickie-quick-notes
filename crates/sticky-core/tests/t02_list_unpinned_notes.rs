@@ -1,5 +1,6 @@
 //! "All notes" dropdown gate — Recents shows five, so without this a note that falls out of the
 //! rail and off the recents is unreachable unless it is grouped. These pin the ordering contract.
+//! Pinned notes are excluded: they are already on the rail.
 mod common;
 use common::*;
 use sticky_core::NoteSort;
@@ -16,7 +17,7 @@ fn sort_codes_match_the_csharp_enum_and_reject_anything_else() {
 }
 
 #[test]
-fn all_notes_includes_pinned_grouped_and_standalone_notes() {
+fn all_notes_lists_grouped_and_standalone_but_never_pinned() {
     let db = new_db();
     let g = db.core.create_group("G", true).unwrap();
     let grouped = db.core.create_note(Some(g.id), "inside").unwrap();
@@ -24,17 +25,15 @@ fn all_notes_includes_pinned_grouped_and_standalone_notes() {
     db.core.set_note_pinned(pinned.id, true).unwrap();
     let loose = db.core.create_note(None, "loose").unwrap();
 
-    let ids: Vec<i64> = db
-        .core
-        .list_all_notes(NoteSort::Recent)
-        .unwrap()
-        .iter()
-        .map(|n| n.id)
-        .collect();
+    let notes = db.core.list_unpinned_notes(NoteSort::Recent).unwrap();
+    let ids: Vec<i64> = notes.iter().map(|n| n.id).collect();
 
-    for id in [grouped.id, pinned.id, loose.id] {
-        assert!(ids.contains(&id), "note {id} must be listed");
-    }
+    assert!(ids.contains(&grouped.id), "a grouped note is still listed");
+    assert!(ids.contains(&loose.id), "a standalone note is listed");
+    assert!(
+        !ids.contains(&pinned.id),
+        "a pinned note is already on the rail and must not be duplicated here"
+    );
 }
 
 #[test]
@@ -47,7 +46,7 @@ fn all_notes_is_not_capped_the_way_recents_is() {
 
     assert_eq!(recent_ids(&db.core).len(), 5, "recents stays capped at five");
     assert_eq!(
-        db.core.list_all_notes(NoteSort::Recent).unwrap().len(),
+        db.core.list_unpinned_notes(NoteSort::Recent).unwrap().len(),
         8,
         "the dropdown is the way back to the notes the recents dropped"
     );
@@ -66,7 +65,7 @@ fn recent_order_is_most_recently_opened_first() {
 
     let order: Vec<i64> = db
         .core
-        .list_all_notes(NoteSort::Recent)
+        .list_unpinned_notes(NoteSort::Recent)
         .unwrap()
         .iter()
         .map(|n| n.id)
@@ -87,7 +86,7 @@ fn alphabetical_order_is_case_insensitive_by_title() {
 
     let titles: Vec<String> = db
         .core
-        .list_all_notes(NoteSort::Alphabetical)
+        .list_unpinned_notes(NoteSort::Alphabetical)
         .unwrap()
         .iter()
         .map(|n| n.title_preview.clone())
@@ -107,7 +106,7 @@ fn alphabetical_ties_fall_back_to_newest_opened_first() {
 
     let ids: Vec<i64> = db
         .core
-        .list_all_notes(NoteSort::Alphabetical)
+        .list_unpinned_notes(NoteSort::Alphabetical)
         .unwrap()
         .iter()
         .map(|n| n.id)
@@ -130,7 +129,7 @@ fn alphabetical_uses_the_title_preview_not_the_whole_body() {
 
     let titles: Vec<String> = db
         .core
-        .list_all_notes(NoteSort::Alphabetical)
+        .list_unpinned_notes(NoteSort::Alphabetical)
         .unwrap()
         .iter()
         .map(|n| n.title_preview.clone())

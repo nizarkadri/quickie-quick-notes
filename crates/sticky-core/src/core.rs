@@ -133,16 +133,19 @@ impl StickyCore {
     }
 
     ///
-    /// Every note (pinned included) for the "All notes" dropdown. Recents only shows five, so without
-    /// this a note that falls out of the rail and off the recents is unreachable unless it is grouped.
+    /// Every UNPINNED note for the "All notes" dropdown. Recents only shows five, so without this a
+    /// note that falls out of the rail and off the recents is unreachable unless it is grouped.
+    ///
+    /// Pinned notes are excluded on purpose: they are already on the pinned rail, and the dropdown
+    /// exists to reach the notes the bar is NOT showing.
     ///
     /// Sorted in Rust rather than SQL because the A→Z key is `title_preview` — the first non-empty line
     /// of the body — which is derived, not a column. Ties fall back to newest-first so the order is
     /// stable between refreshes.
-    pub fn list_all_notes(&self, sort: NoteSort) -> Result<Vec<NoteSummary>, CoreError> {
+    pub fn list_unpinned_notes(&self, sort: NoteSort) -> Result<Vec<NoteSummary>, CoreError> {
         let conn = self.lock()?;
 
-        let sql = format!("SELECT {SUMMARY_COLUMNS} FROM notes");
+        let sql = format!("SELECT {SUMMARY_COLUMNS} FROM notes WHERE is_pinned = 0");
         let mut stmt = conn.prepare(&sql)?;
         let mut notes = stmt
             .query_map([], db::summary_from_row)?

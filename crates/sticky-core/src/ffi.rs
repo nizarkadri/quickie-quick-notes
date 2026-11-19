@@ -234,7 +234,7 @@ pub extern "C" fn sn_list_append_targets(handle: *mut StickyCoreHandle, limit: u
 }
 
 #[no_mangle]
-pub extern "C" fn sn_list_all_notes(
+pub extern "C" fn sn_list_unpinned_notes(
     handle: *mut StickyCoreHandle,
     sort_mode: u32,
 ) -> FfiResult {
@@ -251,7 +251,7 @@ pub extern "C" fn sn_list_all_notes(
                 )))
             }
         };
-        match core.list_all_notes(sort) {
+        match core.list_unpinned_notes(sort) {
             Ok(notes) => ok_json(&notes),
             Err(error) => err(error),
         }

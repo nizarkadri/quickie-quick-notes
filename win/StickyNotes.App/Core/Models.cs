@@ -249,8 +249,12 @@ public interface IStickyCoreClient : IDisposable
     IReadOnlyList<NoteSummary> ListGroupNotes(long groupId);
     IReadOnlyList<NoteSummary> ListAppendTargets(int limit = 30);
 
-    /// <summary>Every note (pinned included) for the "All notes" dropdown, in the requested order.</summary>
-    IReadOnlyList<NoteSummary> ListAllNotes(NoteSort sort);
+    /// <summary>
+    /// Every UNPINNED note for the "All notes" dropdown, in the requested order. Pinned notes are
+    /// excluded: they are already on the rail, and this list exists to reach the ones the bar is not
+    /// showing.
+    /// </summary>
+    IReadOnlyList<NoteSummary> ListUnpinnedNotes(NoteSort sort);
     Note GetNote(long noteId, bool markOpened);
     Note CreateNote(long? groupId, string body = "");
     NoteSummary UpdateNoteBody(long noteId, string body);

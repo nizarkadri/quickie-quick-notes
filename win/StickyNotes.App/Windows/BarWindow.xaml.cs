@@ -127,7 +127,7 @@ public partial class BarWindow : Window
 
         // The recents only ever show five, so a note that falls out of the rail and off the recents is
         // otherwise unreachable unless it is grouped. This arrow is the way back to all of them.
-        Button allNotes = BuildChip("all-notes", "▾", strikePinned: false);
+        Button allNotes = BuildChip("all-notes", "▾", strikePinned: false, isMenu: true);
         allNotes.ToolTip = "All notes";
         RecentPanel.Children.Add(allNotes);
     }

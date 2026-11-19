@@ -2,12 +2,15 @@
 // the recents is unreachable unless it is grouped. This is the way back to it, sortable Date / A→Z.
 // Real ShellCoordinator + real StickyCoreClient + real windows; private members are reached via
 // reflection; nothing here edits production code.
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using StickyNotes.App.Core;
 using StickyNotes.App.Interop;
 using StickyNotes.App.State;
@@ -70,6 +73,47 @@ public class AllNotesDropdownTests
     }
 
     [Fact]
+    public void Hovering_The_Arrow_Opens_The_List()
+    {
+        WinWindowTestSupport.RunOnSta(() =>
+        {
+            using var t = new TempCore();
+            t.Client.CreateNote(null, "one");
+
+            using var coordinator = new ShellCoordinator(t.DbPath);
+            coordinator.Start();
+            try
+            {
+                var bar = (BarWindow)PrivateField(coordinator, "_bar")!;
+                bar.ShowOnMonitor(Bounds, nint.Zero, WinWindowTestSupport.ActualDpi(bar));
+                WinWindowTestSupport.Pump();
+
+                var chips = (Dictionary<string, Button>)PrivateField(bar, "_chips")!;
+                Button arrow = chips["all-notes"];
+                arrow.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, -1) { RoutedEvent = UIElement.MouseEnterEvent });
+
+                // The dwell is 180ms on the bar's own 50ms timer; pump until it fires (bounded so a
+                // regression fails the test instead of hanging the suite).
+                var deadline = DateTime.UtcNow.AddSeconds(5);
+                while (DateTime.UtcNow < deadline && PrivateField(coordinator, "_openListAnchorTag") is null)
+                {
+                    Thread.Sleep(25);
+                    WinWindowTestSupport.Pump();
+                }
+
+                Assert.Equal("all-notes", PrivateField(coordinator, "_openListAnchorTag"));
+                var list = (GroupListWindow)PrivateField(coordinator, "_list")!;
+                Assert.Equal(GroupListMode.OpenAllNotes, list.Mode);
+                Assert.Equal(Visibility.Visible, list.Visibility);
+            }
+            finally
+            {
+                coordinator.Shutdown();
+            }
+        });
+    }
+
+    [Fact]
     public void Opening_The_Arrow_Lists_Every_Note_Not_Just_The_Recents()
     {
         WinWindowTestSupport.RunOnSta(() =>
@@ -80,6 +124,9 @@ public class AllNotesDropdownTests
                 t.Client.CreateNote(null, "note " + i);
                 TempCore.Tick();
             }
+
+            var pinned = t.Client.CreateNote(null, "pinned one");
+            t.Client.SetNotePinned(pinned.Id, true); // already on the rail — must not be duplicated
 
             using var coordinator = new ShellCoordinator(t.DbPath);
             coordinator.Start();
@@ -96,6 +143,7 @@ public class AllNotesDropdownTests
                 Assert.Equal(Visibility.Visible, list.Visibility);
                 Assert.Equal(GroupListMode.OpenAllNotes, list.Mode);
                 Assert.Equal(8, RowTitles(list).Count); // recents would have shown 5
+                Assert.DoesNotContain("pinned one", RowTitles(list));
                 Assert.Equal("All notes", ((TextBlock)WinWindowTestSupport.FindByName(list, "HeaderTitle")).Text);
             }
             finally
