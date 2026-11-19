@@ -84,14 +84,12 @@ crates/sticky-core/     Rust: SQLite schema/CRUD, pin & recents ordering, quick-
 win/StickyNotes.App/    C# WPF: trigger / bar / group-list / note / quick-note windows, Win32 interop, DPI math
 win/StickyNotes.Tests/  xUnit: FFI round-trips, positioning, state machines, session logic
 scripts/                build / test / package / gate
-docs/                   manual acceptance checklist + testing map
+docs/                   manual acceptance checklist
 ```
 
 - **Boundary:** hand-written `extern "C"` ABI + UTF-8 JSON DTOs (16 functions)
 - **Idle cost:** 0% CPU when hidden (no active timers), < 50 MB working set
-- **Tests:** 131 automated (54 Rust + 77 C#); focus/window behaviour is covered by the manual checklist
-
-See [`docs/TESTING.md`](docs/TESTING.md) for the task-by-task test/gate map.
+- **Tests:** 261 automated (62 Rust + 199 C#); focus/window behaviour is covered by the manual checklist
 
 ---
 
