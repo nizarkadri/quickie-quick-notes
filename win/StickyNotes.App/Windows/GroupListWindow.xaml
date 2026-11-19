@@ -33,6 +33,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />   <!-- close -->
                 </Grid.ColumnDefinitions>
                 <Button x:Name="NewGroupButton"
                         Grid.Column="1"
@@ -88,6 +89,18 @@
                         BorderThickness="0"
                         Cursor="Hand"
                         Click="OnDeleteClick" />
+                <Button x:Name="CloseButton"
+                        Grid.Column="5"
+                        Width="28"
+                        Height="28"
+                        Content="×"
+                        FontSize="16"
+                        Foreground="{StaticResource TextPrimary}"
+                        ToolTip="Close"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Cursor="Hand"
+                        Click="OnCloseButtonClick" />
             </Grid>
 
             <!-- Inline delete confirmation — swaps over the header; NEVER a modal dialog. -->

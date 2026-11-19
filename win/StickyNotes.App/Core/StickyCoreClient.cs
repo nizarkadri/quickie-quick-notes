@@ -85,6 +85,9 @@ public sealed class StickyCoreClient : IStickyCoreClient
     public NoteSummary SetNotePinned(long noteId, bool pinned) =>
         InvokeJson<NoteSummary>(h => NativeCoreMethods.sn_set_note_pinned(h, noteId, pinned));
 
+    public Note SetNoteGroup(long noteId, long? groupId) =>
+        InvokeJson<Note>(h => NativeCoreMethods.sn_set_note_group(h, noteId, groupId.HasValue, groupId ?? 0L));
+
     public GroupSummary CreateGroup(string name, bool pinned = true) =>
         InvokeJson<GroupSummary>(h => NativeCoreMethods.sn_create_group(h, name ?? "", pinned));
 

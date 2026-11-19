@@ -18,12 +18,28 @@
             BorderThickness="1">
         <Grid Margin="8">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />    <!-- close (×) row -->
                 <RowDefinition Height="*" />      <!-- text -->
                 <RowDefinition Height="Auto" />   <!-- target selector + hint -->
             </Grid.RowDefinitions>
 
+            <Button x:Name="CloseButton"
+                    Grid.Row="0"
+                    HorizontalAlignment="Right"
+                    Width="20"
+                    Height="20"
+                    Padding="0"
+                    Content="×"
+                    FontSize="14"
+                    ToolTip="Discard"
+                    Foreground="#B0FFFFFF"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Cursor="Hand"
+                    Click="OnCloseButtonClick" />
+
             <TextBox x:Name="BodyBox"
-                     Grid.Row="0"
+                     Grid.Row="1"
                      AcceptsReturn="True"
                      AcceptsTab="False"
                      TextWrapping="Wrap"
@@ -35,7 +51,7 @@
                      VerticalScrollBarVisibility="Auto"
                      PreviewKeyDown="OnBodyPreviewKeyDown" />
 
-            <StackPanel Grid.Row="1" Orientation="Vertical" Margin="0,6,0,0">
+            <StackPanel Grid.Row="2" Orientation="Vertical" Margin="0,6,0,0">
                 <StackPanel Orientation="Horizontal">
                     <Button x:Name="StandaloneButton"
                             Height="26"

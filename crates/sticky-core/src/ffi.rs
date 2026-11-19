@@ -330,6 +330,26 @@ pub extern "C" fn sn_set_note_pinned(
 }
 
 #[no_mangle]
+pub extern "C" fn sn_set_note_group(
+    handle: *mut StickyCoreHandle,
+    note_id: i64,
+    has_group: bool,
+    group_id: i64,
+) -> FfiResult {
+    guarded(|| {
+        let core = match unsafe { core_ref(handle) } {
+            Ok(core) => core,
+            Err(error) => return err(error),
+        };
+        let group = if has_group { Some(group_id) } else { None };
+        match core.set_note_group(note_id, group) {
+            Ok(note) => ok_json(&note),
+            Err(error) => err(error),
+        }
+    })
+}
+
+#[no_mangle]
 pub extern "C" fn sn_create_group(
     handle: *mut StickyCoreHandle,
     name_utf8: *const c_char,

@@ -78,6 +78,13 @@ internal static class NativeCoreMethods
         [MarshalAs(UnmanagedType.U1)] bool pinned);
 
     [DllImport(Dll, CallingConvention = Cdecl)]
+    internal static extern FfiResult sn_set_note_group(
+        IntPtr handle,
+        long noteId,
+        [MarshalAs(UnmanagedType.U1)] bool hasGroup,
+        long groupId);
+
+    [DllImport(Dll, CallingConvention = Cdecl)]
     internal static extern FfiResult sn_create_group(
         IntPtr handle,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string nameUtf8,

@@ -9,7 +9,6 @@ public enum BarState
     Hidden,
     DwellPending,
     OpenHover,
-    ExitGrace,
     OpenFocusedLock,
 }
 
@@ -21,25 +20,37 @@ public enum ShellActionKind
 
 public readonly record struct ShellAction(ShellActionKind Kind, nint Monitor);
 
-/// <summary>Per-tick observation supplied by the shell (cursor + fullscreen).</summary>
-public readonly record struct BarProbe(bool CursorInTrigger, bool CursorInSurfaces, bool FullscreenOnMonitor);
+/// <summary>
+/// Per-tick observation supplied by the shell. The machine needs only the two facts the DWELL depends on:
+/// where the trigger is, and whether that monitor went fullscreen. Whether the cursor is over an app
+/// surface is the fade's business (ShellCoordinator + BarExitPolicy), not the machine's.
+/// </summary>
+public readonly record struct BarProbe(bool CursorInTrigger, bool FullscreenOnMonitor);
 
 /// <summary>
-/// Pure trigger/bar/focus-lock/grace state machine (blueprint §8.1, contract pinned by BarStateMachineTests).
+/// Pure trigger/bar/focus-lock state machine (blueprint §8.1, contract pinned by BarStateMachineTests).
 /// Zero WPF Window / DispatcherTimer / HWND references — unit-testable with a virtual clock.
-/// Timings: dwell 180ms, exit grace 200ms. PollingActive is false only in Hidden (0% idle CPU).
+/// Timings: dwell 180ms. PollingActive is false only in Hidden (0% idle CPU).
+///
+/// <para>
+/// The machine deliberately owns NO exit timing. Since v0.2.2 the exit is the coordinator's 2s linear
+/// bar fade (BarExitPolicy), which is the single exit policy. Until then the machine timed a 200ms
+/// <c>ExitGrace</c> of its own and the coordinator had to park it by passing a half-true
+/// <see cref="BarProbe.CursorInTrigger"/> slot — a second policy firing behind its back, and the cause
+/// of "a new note vanishes the moment I move the cursor toward it" (the machine hid everything 200ms
+/// after the cursor left the bar while the coordinator believed it had declined to exit). The state, the
+/// timer and the probe flag are deleted; leaving every surface is not the machine's business.
+/// </para>
 /// </summary>
 public sealed class BarStateMachine
 {
     public const int DwellMs = 180;
-    public const int ExitGraceMs = 200;
 
     private readonly List<ShellAction> _actions = new();
 
     private BarState _state = BarState.Hidden;
     private nint _monitor;
     private int _dwellElapsed;
-    private int _graceElapsed;
 
     public BarState State => _state;
 
@@ -78,10 +89,9 @@ public sealed class BarStateMachine
     /// <summary>An editor window took keyboard focus — pause exit checks while it holds focus.</summary>
     public void EditorFocused()
     {
-        if (_state is BarState.OpenHover or BarState.ExitGrace)
+        if (_state is BarState.OpenHover)
         {
             _state = BarState.OpenFocusedLock;
-            _graceElapsed = 0;
         }
     }
 
@@ -110,6 +120,21 @@ public sealed class BarStateMachine
 
     /// <summary>Monitor unplug/resolution/DPI change — flush and hide from any state.</summary>
     public void DisplaySettingsChanged()
+    {
+        if (_state == BarState.Hidden)
+        {
+            return;
+        }
+
+        Hide();
+        _actions.Add(new ShellAction(ShellActionKind.FlushAndHideAll, _monitor));
+    }
+
+    /// <summary>
+    /// v0.2.2: the 2s exit fade elapsed (or any other immediate teardown) — go straight to Hidden and
+    /// flush. Additive; existing transitions are untouched.
+    /// </summary>
+    public void HideNow()
     {
         if (_state == BarState.Hidden)
         {
@@ -162,34 +187,9 @@ public sealed class BarStateMachine
                 break;
 
             case BarState.OpenHover:
-                if (!probe.CursorInSurfaces)
-                {
-                    _state = BarState.ExitGrace;
-                    _graceElapsed = 0;
-                }
-
-                break;
-
-            case BarState.ExitGrace:
-                if (probe.CursorInSurfaces)
-                {
-                    _state = BarState.OpenHover;
-                    _graceElapsed = 0;
-                    break;
-                }
-
-                _graceElapsed += ms;
-                if (_graceElapsed >= ExitGraceMs)
-                {
-                    Hide();
-                    _actions.Add(new ShellAction(ShellActionKind.FlushAndHideAll, _monitor));
-                }
-
-                break;
-
             case BarState.OpenFocusedLock:
             case BarState.Hidden:
-                break;
+                break; // the coordinator's fade owns the exit; the machine never hides on its own
         }
     }
 
@@ -209,6 +209,5 @@ public sealed class BarStateMachine
     {
         _state = BarState.Hidden;
         _dwellElapsed = 0;
-        _graceElapsed = 0;
     }
 }

@@ -182,45 +182,16 @@ public class NotePreviewFormatTests
 }
 
 [Trait("Task", "F4")]
+[Collection("WpfUi")]
 public class NotePreviewToolTipTests
 {
     // CreateToolTip reads Application.Current.Resources["TextPrimary"]: a null Application.Current
     // (NullReferenceException) or a missing key (KeyNotFoundException) is a crash ON HOVER. The
     // real app supplies the key via App.xaml; this test supplies the same resource on a bare
     // Application so the contract CreateToolTip relies on is exercised, not re-created by accident.
-    private static readonly object WpfGate = new();
-
-    private static void RunOnStaThread(Action body)
-    {
-        lock (WpfGate)
-        {
-            Exception? error = null;
-            var thread = new Thread(() =>
-            {
-                try
-                {
-                    var app = Application.Current ?? new Application();
-                    if (!app.Resources.Contains("TextPrimary"))
-                    {
-                        app.Resources.Add("TextPrimary", new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.White));
-                    }
-
-                    body();
-                }
-                catch (Exception ex)
-                {
-                    error = ex;
-                }
-            });
-            thread.SetApartmentState(ApartmentState.STA);
-            thread.Start();
-            thread.Join();
-            if (error is not null)
-            {
-                throw error;
-            }
-        }
-    }
+    // Runs on the shared WPF UI thread (see WinWindowTestSupport) — one Application for the whole
+    // suite, with the app-level brushes frozen. All assertions are unchanged from the original.
+    private static void RunOnStaThread(Action body) => WinWindowTestSupport.RunOnSta(body);
 
     [Fact]
     public void Tooltip_is_a_non_activating_popup_that_stays_open_false()

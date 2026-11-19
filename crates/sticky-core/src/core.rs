@@ -196,6 +196,23 @@ impl StickyCore {
         fetch_summary(&conn, note_id)
     }
 
+    /// Moves a note into `group_id` (or `None` for standalone). Validates the target group
+    /// exists; a move is not an open and does not touch `last_opened_at_ms`/`updated_at_ms`.
+    pub fn set_note_group(&self, note_id: i64, group_id: Option<i64>) -> Result<Note, CoreError> {
+        let conn = self.lock()?;
+        if let Some(gid) = group_id {
+            require_group(&conn, gid)?;
+        }
+        let updated = conn.execute(
+            "UPDATE notes SET group_id = ?2 WHERE id = ?1",
+            params![note_id, group_id],
+        )?;
+        if updated == 0 {
+            return Err(not_found_note(note_id));
+        }
+        fetch_note(&conn, note_id)
+    }
+
     // -----------------------------------------------------------------------
     // Groups
     // -----------------------------------------------------------------------

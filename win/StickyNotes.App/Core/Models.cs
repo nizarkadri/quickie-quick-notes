@@ -240,6 +240,7 @@ public interface IStickyCoreClient : IDisposable
     NoteSummary UpdateNoteBody(long noteId, string body);
     void DeleteNote(long noteId);
     NoteSummary SetNotePinned(long noteId, bool pinned);
+    Note SetNoteGroup(long noteId, long? groupId);
     GroupSummary CreateGroup(string name, bool pinned = true);
     GroupSummary RenameGroup(long groupId, string name);
     void DeleteGroup(long groupId);

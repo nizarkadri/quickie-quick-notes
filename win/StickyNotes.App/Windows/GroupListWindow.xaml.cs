@@ -8,8 +8,10 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Controls.Primitives;
+using System.Windows.Threading;
 using StickyNotes.App.Core;
 using StickyNotes.App.Interop;
+using StickyNotes.App.State;
 
 namespace StickyNotes.App.Windows;
 
@@ -36,6 +38,66 @@ public partial class GroupListWindow : Window
 
     private readonly ScreenPositioner _positioner = new();
 
+    // v0.2.2+ (F5): hovering a GROUP ROW for ~180ms raises GroupRowHover with DwellReady=true; the
+    // coordinator shows that group's notes in a side list to the RIGHT of this dropdown. The dwell clock
+    // lives HERE (a 50ms poll over the hovered row) because a pointer that simply SITS on a row raises no
+    // further MouseEnter events, and the coordinator's tick cannot be assumed to run (the bar is hidden
+    // until a trigger dwell completes; tests may show windows without starting it).
+    private readonly HoverDwellTracker _rowDwell = new();
+    private readonly DispatcherTimer _rowDwellTimer = new() { Interval = TimeSpan.FromMilliseconds(50) };
+    private long _hoveredGroupId;
+    private PxRect _hoveredRowRect;
+
+    private void BeginRowHover(long groupId, PxRect rowRect)
+    {
+        if (groupId != _hoveredGroupId)
+        {
+            _hoveredGroupId = groupId;
+            _rowDwell.Reset();
+        }
+
+        _hoveredRowRect = rowRect;
+        _rowDwell.Poll(true, Environment.TickCount64); // seed the dwell clock NOW — a pointer that then just SITS raises no further events
+        _rowDwellTimer.Start();
+        GroupRowHover?.Invoke(this, new GroupListRowHoverEventArgs(groupId, inside: true, rowRect));
+    }
+
+    private void PollRowDwell()
+    {
+        if (!IsLoaded || _hoveredGroupId == 0)
+        {
+            _rowDwellTimer.Stop();
+            return;
+        }
+
+        if (_rowDwell.Poll(true, Environment.TickCount64) == HoverDwellTracker.HoverStage.Ready)
+        {
+            _rowDwell.Reset(); // one DwellReady per uninterrupted dwell
+            _rowDwellTimer.Stop(); // the dwell is DONE — a stationary pointer must not re-fire it every ~180ms
+            GroupRowHover?.Invoke(this, new GroupListRowHoverEventArgs(_hoveredGroupId, inside: true, _hoveredRowRect, dwellReady: true));
+        }
+    }
+
+    private void EndRowHover(long groupId)
+    {
+        if (groupId == _hoveredGroupId)
+        {
+            GroupRowHover?.Invoke(this, new GroupListRowHoverEventArgs(groupId, inside: false, default));
+            _hoveredGroupId = 0;
+        }
+
+        _rowDwell.Reset();
+        _rowDwellTimer.Stop();
+    }
+
+    /// <summary>Drop all row-hover state so a hidden/re-rendered list never fires a stale dwell.</summary>
+    private void ResetRowHover()
+    {
+        _rowDwellTimer.Stop();
+        _rowDwell.Reset();
+        _hoveredGroupId = 0;
+    }
+
     private GroupListMode _mode = GroupListMode.OpenAllGroups;
     private GroupSummary? _group;
     private InlineEditPurpose _editPurpose = InlineEditPurpose.None;
@@ -49,6 +111,9 @@ public partial class GroupListWindow : Window
 
     /// <summary>A group row in OpenAllGroups was clicked — switch to that group's list.</summary>
     public event Action<long>? GroupRowActivated;
+
+    /// <summary>F6: right-click on a note/group row — coordinator builds the context menu.</summary>
+    public event EventHandler<GroupListContextMenuEventArgs>? ContextMenuRequested;
 
     /// <summary>Pin toggle pressed (OpenGroup header pin or a row pin). Coordinator flips the current state via the core.</summary>
     public event Action<long>? GroupPinToggled;
@@ -68,10 +133,14 @@ public partial class GroupListWindow : Window
     /// <summary>An inline edit ended — coordinator releases the focus lock.</summary>
     public event EventHandler? InlineEditEnded;
 
+    /// <summary>F6: the header close button was pressed — coordinator clears the anchor and hides the list.</summary>
+    public event EventHandler? CloseRequested;
+
     public GroupListWindow()
     {
         InitializeComponent();
         Visibility = Visibility.Hidden;
+        _rowDwellTimer.Tick += (_, _) => PollRowDwell();
         ShowActivated = false;
         Deactivated += OnDeactivated;
     }
@@ -104,9 +173,11 @@ public partial class GroupListWindow : Window
         nint hwnd = new WindowInteropHelper(this).Handle;
         var size = new PxSize((int)Math.Round(260 * dpi), (int)Math.Round(420 * dpi));
         PxRect rect = _positioner.GetGroupListRect(anchorRect, size, bounds);
+        Left = rect.X / dpi;
+        Top = rect.Y / dpi;
         Visibility = Visibility.Visible;
         _ = Win32.SetWindowPos(hwnd, Win32.HWND_TOPMOST, rect.X, rect.Y, rect.Width, rect.Height,
-            Win32.SWP_NOACTIVATE | Win32.SWP_SHOWWINDOW);
+            Win32.SWP_NOACTIVATE);
     }
 
     public void ShowGroup(GroupSummary group, IReadOnlyList<NoteSummary> notes)
@@ -126,9 +197,19 @@ public partial class GroupListWindow : Window
 
     public void RefreshAllGroups(IReadOnlyList<GroupSummary> allGroups) => RenderAllGroupsMode(allGroups);
 
-    /// <summary>Hide (never close — the window is reused).</summary>
+    /// <summary>v0.2.2+: the pointer entered/left a GROUP ROW in OpenAllGroups mode, or a row's 180ms dwell completed. Inside=false on leave; the row rect is physical px (valid while inside). DwellReady=true fires ONCE per uninterrupted dwell from the window's own 50ms poll (the coordinator tick cannot be relied on: a pointer that SITS on a row raises no further events).</summary>
+    public event EventHandler<GroupListRowHoverEventArgs>? GroupRowHover;
+
+    /// <summary>Hide (never close — the window is reused). Commits an in-flight inline edit first.</summary>
     public void CloseList()
     {
+        ResetRowHover(); // a hidden list must not fire a stale DwellReady at the coordinator
+
+        if (_editing)
+        {
+            FinishInlineEdit(commit: !string.IsNullOrWhiteSpace(EditBox.Text), restoreForeground: false);
+        }
+
         CloseTips();
         Visibility = Visibility.Hidden;
     }
@@ -170,6 +251,7 @@ public partial class GroupListWindow : Window
         NewNoteButton.Visibility = Visibility.Visible;
 
         CloseTips();
+        ResetRowHover();
         RowsPanel.Children.Clear();
         foreach (NoteSummary note in notes.OrderByDescending(n => n.LastOpenedAtMs))
         {
@@ -191,6 +273,7 @@ public partial class GroupListWindow : Window
         NewNoteButton.Visibility = Visibility.Collapsed;
 
         CloseTips();
+        ResetRowHover();
         RowsPanel.Children.Clear();
         foreach (GroupSummary g in allGroups.OrderBy(g => g.CreatedAtMs))
         {
@@ -214,6 +297,12 @@ public partial class GroupListWindow : Window
         {
             CloseTips();
             NoteClicked?.Invoke(note.Id, RectOf(row));
+        };
+        row.MouseRightButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            CloseTips();
+            ContextMenuRequested?.Invoke(this, new GroupListContextMenuEventArgs(ContextMenuTargetKind.Note, note.Id, row, RectOf(row)));
         };
 
         var content = new Grid();
@@ -314,6 +403,13 @@ public partial class GroupListWindow : Window
             Padding = new Thickness(10, 0, 6, 0),
         };
         row.Click += (_, _) => GroupRowActivated?.Invoke(group.Id);
+        row.MouseEnter += (_, _) => BeginRowHover(group.Id, RectOf(row));
+        row.MouseLeave += (_, _) => EndRowHover(group.Id);
+        row.MouseRightButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            ContextMenuRequested?.Invoke(this, new GroupListContextMenuEventArgs(ContextMenuTargetKind.Group, group.Id, row, RectOf(row)));
+        };
 
         var content = new Grid();
         content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -357,7 +453,20 @@ public partial class GroupListWindow : Window
 
     // ------------------------------------------------------------------ inline edit (rename / new group)
 
-    private void OnRenameClick(object sender, RoutedEventArgs e)
+    private void OnCloseButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (_editing)
+        {
+            FinishInlineEdit(commit: true, restoreForeground: false);
+        }
+
+        CloseRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnRenameClick(object sender, RoutedEventArgs e) => BeginRename();
+
+    /// <summary>F6: start renaming the open group (coordinator switches to OpenGroup first).</summary>
+    public void BeginRename()
     {
         if (_mode != GroupListMode.OpenGroup || _group is null)
         {
@@ -447,7 +556,10 @@ public partial class GroupListWindow : Window
 
     // ------------------------------------------------------------------ inline delete confirm
 
-    private void OnDeleteClick(object sender, RoutedEventArgs e)
+    private void OnDeleteClick(object sender, RoutedEventArgs e) => BeginDelete();
+
+    /// <summary>F6: show the inline delete confirmation for the open group.</summary>
+    public void BeginDelete()
     {
         if (_mode != GroupListMode.OpenGroup || _group is null)
         {
@@ -509,7 +621,58 @@ public partial class GroupListWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        ResetRowHover(); // never expand a list that is already gone
         FocusHelper.ForgetWindow(new WindowInteropHelper(this).Handle);
         base.OnClosed(e);
     }
+}
+
+/// <summary>F6: which row was right-clicked.</summary>
+public enum ContextMenuTargetKind
+{
+    Note,
+    Group,
+}
+
+/// <summary>F6: right-click on a group-list row — coordinator builds and opens the context menu.</summary>
+    public sealed class GroupListRowHoverEventArgs : EventArgs
+    {
+        public GroupListRowHoverEventArgs(long groupId, bool inside, PxRect rowRect, bool dwellReady = false)
+        {
+            GroupId = groupId;
+            Inside = inside;
+            RowRect = rowRect;
+            DwellReady = dwellReady;
+        }
+
+        public long GroupId { get; }
+
+        /// <summary>True while the pointer is over the row; false on leave.</summary>
+        public bool Inside { get; }
+
+        /// <summary>Physical-pixel rect of the row (valid while <see cref="Inside"/>).</summary>
+        public PxRect RowRect { get; }
+
+        /// <summary>True on the single event that fires when an uninterrupted ~180ms dwell completes.</summary>
+        public bool DwellReady { get; }
+    }
+public sealed class GroupListContextMenuEventArgs : EventArgs
+{
+    public GroupListContextMenuEventArgs(ContextMenuTargetKind kind, long id, Button target, PxRect anchor)
+    {
+        Kind = kind;
+        Id = id;
+        Target = target;
+        Anchor = anchor;
+    }
+
+    public ContextMenuTargetKind Kind { get; }
+
+    public long Id { get; }
+
+    /// <summary>The row to anchor the ContextMenu to.</summary>
+    public Button Target { get; }
+
+    /// <summary>Screen rect of the row (used as the note-window anchor).</summary>
+    public PxRect Anchor { get; }
 }

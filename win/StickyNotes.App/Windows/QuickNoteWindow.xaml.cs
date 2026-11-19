@@ -35,20 +35,18 @@ public partial class QuickNoteWindow : Window
         _session = new QuickNoteSession(core);
 
         InitializeComponent();
+        Visibility = Visibility.Hidden; // create hidden; ShowQuickNote positions before making it visible
         Deactivated += OnDeactivated;
     }
 
     /// <summary>Raised when the window closes itself. Parameter: close reason + outcome.</summary>
     public event EventHandler<QuickNoteClosedEventArgs>? QuickNoteClosed;
 
-    public void ShowQuickNote(PxRect barRect, MonitorBounds bounds, double dpi)
+    /// <summary>Position, show and try to activate the editor. Returns true only when the OS foreground window really is this one (a failed activation, e.g. elevated/UIPI-blocked, must NOT take the machine's focus lock).</summary>
+    public bool ShowQuickNote(PxRect barRect, MonitorBounds bounds, double dpi)
     {
-        nint hwnd = new WindowInteropHelper(this).Handle;
-        if (hwnd == nint.Zero)
-        {
-            Show();
-            hwnd = new WindowInteropHelper(this).Handle;
-        }
+        var helper = new WindowInteropHelper(this);
+        _ = helper.Handle; // create the hidden HWND before positioning
 
         int wPhys = (int)Math.Round(380 * dpi);
         int hPhys = (int)Math.Round(220 * dpi);
@@ -61,12 +59,34 @@ public partial class QuickNoteWindow : Window
         if (y + hPhys > bounds.WorkArea.Bottom) y = bounds.WorkArea.Bottom - hPhys;
         if (y < bounds.WorkArea.Top) y = bounds.WorkArea.Top;
 
+        Left = x / dpi;
+        Top = y / dpi;
         Visibility = Visibility.Visible;
-        var helper = new WindowInteropHelper(this);
-        _ = Win32.SetWindowPos(helper.Handle, Win32.HWND_TOPMOST, x, y, wPhys, hPhys, Win32.SWP_SHOWWINDOW);
-
-        FocusHelper.ForceActivateAndFocus(this, helper.Handle, BodyBox);
+        _ = Win32.SetWindowPos(helper.Handle, Win32.HWND_TOPMOST, x, y, wPhys, hPhys, Win32.SWP_NOACTIVATE);
+        bool activated = FocusHelper.ForceActivateAndFocus(this, helper.Handle, BodyBox);
         BodyBox.SelectAll();
+
+        // Headless / activation-denied hosts can leave the WPF focus scope empty even though the window
+        // is shown; retry once the window has actually loaded so the caret lands before the caller decides.
+        if (!FocusHelper.IsKeyboardFocusInside(this))
+        {
+            if (IsLoaded)
+            {
+                FocusHelper.ForceActivateAndFocus(this, new WindowInteropHelper(this).Handle, BodyBox); // Loaded already fired: retry now
+            }
+            else
+            {
+                Loaded += (_, _) =>
+                {
+                    if (!FocusHelper.IsKeyboardFocusInside(this))
+                    {
+                        FocusHelper.ForceActivateAndFocus(this, new WindowInteropHelper(this).Handle, BodyBox);
+                    }
+                };
+            }
+        }
+
+        return activated; // OS foreground truth: the coordinator gates its focus lock on this
     }
 
     /// <summary>Force position for persistent hit-testing consumers.</summary>
@@ -216,6 +236,11 @@ public partial class QuickNoteWindow : Window
             : System.Windows.Media.Brushes.Transparent;
     }
 
+    private void OnCloseButtonClick(object sender, RoutedEventArgs e)
+    {
+        CloseInternal(QuickNoteClose.Escape); // × always discards — same contract as Esc
+    }
+
     private void OnBodyPreviewKeyDown(object sender, KeyEventArgs e)
     {
         if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control && e.Key == Key.Enter)
@@ -235,6 +260,11 @@ public partial class QuickNoteWindow : Window
         if (_suppressDeactivate)
         {
             return; // the user is picking from a target ContextMenu, not clicking outside
+        }
+
+        if (IsFocusWithin)
+        {
+            return; // we lost the OS foreground but still own the WPF focus scope: not a click-outside
         }
 
         // Click-outside commits non-empty text (§8.4); empty text commits nothing.
@@ -271,6 +301,9 @@ public partial class QuickNoteWindow : Window
         QuickNoteClosed?.Invoke(this, new QuickNoteClosedEventArgs(reason, outcome));
         Close();
     }
+
+    /// <summary>True when the WPF keyboard focus (the focus scope, not the OS foreground) sits anywhere inside this window.</summary>
+    private bool IsFocusWithin => FocusHelper.IsKeyboardFocusInside(this);
 
     protected override void OnClosed(EventArgs e)
     {

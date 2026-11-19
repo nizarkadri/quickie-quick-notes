@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Input;
+using System.Windows.Media;
 
 namespace StickyNotes.App.Interop;
 
@@ -27,6 +28,26 @@ public static class FocusHelper
 
     /// <summary>Foreground window captured before the last ForceActivateAndFocus / BeginInlineEdit, if it was external.</summary>
     public static IntPtr SavedForegroundHwnd { get; private set; }
+
+    /// <summary>
+    /// True when the OS foreground is one of OUR windows that is currently ALLOWED to activate — i.e. an
+    /// inline editor (group Rename / + New Group) took activation on purpose. Callers that would otherwise
+    /// re-assert an editor's focus must stand down then: yanking focus back would deactivate the inline box
+    /// and commit/cancel it ~one settle-timer later.
+    /// </summary>
+    public static bool IsOwnActivatableForeground()
+    {
+        IntPtr fg = Win32.GetForegroundWindow();
+        if (fg == IntPtr.Zero || !Win32.IsOwnAppWindow(fg))
+        {
+            return false;
+        }
+
+        lock (States)
+        {
+            return States.TryGetValue(fg, out WindowState? state) && state.AllowActivate;
+        }
+    }
 
     private static WindowState StateFor(IntPtr hwnd)
     {
@@ -186,7 +207,16 @@ public static class FocusHelper
     /// AttachThreadInput; UIPI blocks this against elevated (Admin) windows — clicking the editor
     /// then activates it natively.
     /// </summary>
-    public static void ForceActivateAndFocus(Window editorWindow, IntPtr editorHwnd, IInputElement focusTarget)
+    /// <returns>True only when the OS foreground window really is <paramref name="editorHwnd"/> afterwards — callers gate focus-lock state on this, because <see cref="Keyboard.Focus"/> can land WPF focus even when the OS steal failed (elevated foreground / UIPI).</returns>
+    /// <remarks>
+    /// v0.2.2+ hardening: <see cref="Window.Activate"/> throws "Cannot call Activate before a
+    /// Window is shown" when the HWND is not visible yet, and can also fail while the dispatcher is
+    /// mid-layout. Both are now guarded: the window is forced visible first (only when it is loaded and
+    /// not mid-close — never resurrect a closing window), <see cref="Activate"/> runs in its own
+    /// try/catch, and <see cref="Keyboard.Focus"/> is applied unconditionally so the text box still
+    /// gets the caret even if the OS-level foreground steal lost the race.
+    /// </remarks>
+    public static bool ForceActivateAndFocus(Window editorWindow, IntPtr editorHwnd, IInputElement focusTarget)
     {
         ArgumentNullException.ThrowIfNull(editorWindow);
         ArgumentNullException.ThrowIfNull(focusTarget);
@@ -199,6 +229,13 @@ public static class FocusHelper
 
         _ = Win32.SetWindowPos(editorHwnd, Win32.HWND_TOPMOST, 0, 0, 0, 0,
             Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_SHOWWINDOW);
+
+        if (editorWindow.Visibility != Visibility.Visible && editorWindow.IsLoaded)
+        {
+            // Activate() refuses to run on an unshown window; IsLoaded keeps this from resurrecting a
+            // window that is mid-close (Visibility already Hidden by its own close path).
+            editorWindow.Visibility = Visibility.Visible;
+        }
 
         if (!Win32.SetForegroundWindow(editorHwnd) || Win32.GetForegroundWindow() != editorHwnd)
         {
@@ -218,8 +255,42 @@ public static class FocusHelper
             }
         }
 
-        editorWindow.Activate();
+        try
+        {
+            editorWindow.Activate();
+        }
+        catch (InvalidOperationException)
+        {
+            // Window not source-initialized yet / shutting down — Keyboard.Focus below still lands.
+        }
+
         Keyboard.Focus(focusTarget);
+        editorWindow.Focus();
+
+        return Win32.GetForegroundWindow() == editorHwnd;
+    }
+
+    /// <summary>
+    /// True when keyboard focus (the WPF focus scope, not the OS foreground window) sits anywhere
+    /// inside <paramref name="window"/>. Callers use it to gate the machine's focus lock on focus
+    /// that really landed.
+    /// </summary>
+    public static bool IsKeyboardFocusInside(Window window)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+
+        DependencyObject? element = Keyboard.FocusedElement as DependencyObject;
+        while (element is not null)
+        {
+            if (ReferenceEquals(element, window))
+            {
+                return true;
+            }
+
+            element = LogicalTreeHelper.GetParent(element) ?? VisualTreeHelper.GetParent(element);
+        }
+
+        return false;
     }
 
     /// <summary>Passive show: keep the window TOPMOST without activating it (NoteWindow reference reading).</summary>

@@ -19,6 +19,7 @@
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />   <!-- header / delete-confirm -->
+                <RowDefinition Height="Auto" />   <!-- F1: inline new-group row -->
                 <RowDefinition Height="*" />      <!-- body -->
             </Grid.RowDefinitions>
 
@@ -40,13 +41,18 @@
                         BorderThickness="0"
                         Cursor="Hand"
                         Click="OnPinToggleClick" />
-                <TextBlock x:Name="GroupBadge"
-                           Grid.Column="1"
-                           Foreground="#9CDCFE"
-                           FontSize="11"
-                           VerticalAlignment="Center"
-                           TextTrimming="CharacterEllipsis"
-                           Visibility="Collapsed" />
+                <Button x:Name="GroupBadge"
+                        Grid.Column="1"
+                        Height="28"
+                        Padding="6,0"
+                        HorizontalAlignment="Left"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Foreground="#9CDCFE"
+                        FontSize="11"
+                        Cursor="Hand"
+                        ToolTip="Move to group"
+                        Click="OnMoveToGroupClick" />
                 <Button x:Name="DeleteButton"
                         Grid.Column="2"
                         Width="28"
@@ -109,8 +115,51 @@
                         Click="OnConfirmCancelClick" />
             </Grid>
 
+            <!-- F1: inline new-group row — shown when "＋ New group…" is picked from the move menu. -->
+            <Grid x:Name="NewGroupPanel" Grid.Row="1" Height="32" Margin="6,0,6,2" Visibility="Collapsed">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="NewGroupBox"
+                         Grid.Column="0"
+                         FontSize="12"
+                         Foreground="{StaticResource TextPrimary}"
+                         Background="#22FFFFFF"
+                         BorderThickness="0"
+                         CaretBrush="{StaticResource TextPrimary}"
+                         Padding="4,3"
+                         VerticalContentAlignment="Center"
+                         KeyDown="OnNewGroupKeyDown" />
+                <Button x:Name="CreateGroupButton"
+                        Grid.Column="1"
+                        Height="24"
+                        Padding="8,0"
+                        Margin="4,0,0,0"
+                        Content="Create"
+                        FontSize="11"
+                        Foreground="White"
+                        Background="#3C6E3C"
+                        BorderThickness="0"
+                        Cursor="Hand"
+                        Click="OnCreateGroupClick" />
+                <Button x:Name="CancelNewGroupButton"
+                        Grid.Column="2"
+                        Height="24"
+                        Padding="8,0"
+                        Margin="4,0,0,0"
+                        Content="Cancel"
+                        FontSize="11"
+                        Foreground="{StaticResource TextPrimary}"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Cursor="Hand"
+                        Click="OnCancelNewGroupClick" />
+            </Grid>
+
             <TextBox x:Name="BodyBox"
-                     Grid.Row="1"
+                     Grid.Row="2"
                      AcceptsReturn="True"
                      AcceptsTab="False"
                      TextWrapping="Wrap"

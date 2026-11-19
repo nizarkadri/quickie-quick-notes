@@ -2,10 +2,10 @@
 //
 // CONTRACT THE BLUEPRINT MUST ADOPT (extract this pure class from ShellCoordinator):
 //
-//   public enum BarState { Hidden, DwellPending, OpenHover, ExitGrace, OpenFocusedLock }
+//   public enum BarState { Hidden, DwellPending, OpenHover, OpenFocusedLock }
 //   public enum ShellActionKind { ShowBar, FlushAndHideAll }
 //   public readonly record struct ShellAction(ShellActionKind Kind, nint Monitor);
-//   public readonly record struct BarProbe(bool CursorInTrigger, bool CursorInSurfaces, bool FullscreenOnMonitor);
+//   public readonly record struct BarProbe(bool CursorInTrigger, bool FullscreenOnMonitor);
 //
 //   public sealed class BarStateMachine {
 //       public BarState State { get; }
@@ -20,7 +20,13 @@
 //       public IReadOnlyList<ShellAction> DrainActions();
 //   }
 //
-// Timings: dwell 180 ms, poll 50 ms, exit grace 200 ms. Boundary checks allow one 10 ms step of slack.
+// Timings: dwell 180 ms, poll 50 ms. Boundary checks allow one 10 ms step of slack.
+//
+// EXIT IS NOT THE MACHINE'S BUSINESS (v0.2.2+): the 2s linear bar fade (BarExitPolicy, driven by
+// ShellCoordinator) is the single exit policy. The machine used to time a 200ms ExitGrace of its own,
+// which the coordinator had to park by passing a half-true CursorInSurfaces — a second policy that could
+// hide everything behind the coordinator's back (a new note vanished as the cursor left the bar for it).
+// BarState.ExitGrace and BarProbe.CursorInSurfaces are gone; leaving every surface is now unobservable here.
 using StickyNotes.App.State;
 using Xunit;
 
@@ -29,10 +35,9 @@ namespace StickyNotes.Tests;
 [Trait("Task", "5")]
 public class BarStateMachineTests
 {
-    static readonly BarProbe Hovering = new(CursorInTrigger: true, CursorInSurfaces: true, FullscreenOnMonitor: false);
-    static readonly BarProbe Inside = new(false, true, false);
-    static readonly BarProbe Outside = new(false, false, false);
-    static readonly BarProbe Fullscreen = new(true, true, true);
+    static readonly BarProbe Hovering = new(CursorInTrigger: true, FullscreenOnMonitor: false);
+    static readonly BarProbe Outside = new(false, false);
+    static readonly BarProbe Fullscreen = new(true, true);
 
     static void Run(BarStateMachine sm, int totalMs, BarProbe probe)
     {
@@ -47,12 +52,6 @@ public class BarStateMachineTests
         Assert.Equal(BarState.OpenHover, sm.State);
         sm.DrainActions();
         return sm;
-    }
-
-    static void RunUntil(BarStateMachine sm, BarState target, BarProbe probe, int maxMs = 500)
-    {
-        for (int t = 0; t < maxMs && sm.State != target; t += 10) sm.Advance(10, probe);
-        Assert.Equal(target, sm.State);
     }
 
     // ---------- reveal ----------
@@ -139,43 +138,35 @@ public class BarStateMachineTests
     {
         var sm = OpenBar();
         Assert.True(sm.PollingActive);
-        RunUntil(sm, BarState.ExitGrace, Outside);
+        Run(sm, 10_000, Outside); // the machine never exits on its own, so polling never lapses here
         Assert.True(sm.PollingActive);
-        RunUntil(sm, BarState.Hidden, Outside);
+        sm.HideNow();
+        Assert.Equal(BarState.Hidden, sm.State);
         Assert.False(sm.PollingActive);
     }
 
-    // ---------- keep-open / exit grace ----------
+    // ---------- exit belongs to the coordinator's fade, not to the machine ----------
     [Fact]
-    public void Bar_stays_open_while_the_cursor_is_over_any_surface()
+    public void Leaving_all_surfaces_does_not_hide_the_machine()
     {
         var sm = OpenBar();
-        Run(sm, 10_000, Inside);
+        Run(sm, 10_000, Outside);
         Assert.Equal(BarState.OpenHover, sm.State);
-        Assert.Empty(sm.DrainActions());
+        Assert.True(sm.PollingActive);
+        Assert.Empty(sm.DrainActions()); // no 200ms grace, no hidden-behind-your-back FlushAndHideAll
     }
 
     [Fact]
-    public void Leaving_all_surfaces_starts_grace_and_hides_after_about_200ms()
+    public void Cursor_position_is_irrelevant_to_the_machine()
     {
+        // The machine learns only "dwell done" and "monitor went fullscreen"; everything cursor-shaped is
+        // the fade's. Alternating probes must not change anything once the bar is open.
         var sm = OpenBar();
-        RunUntil(sm, BarState.ExitGrace, Outside);
-        Run(sm, 150, Outside);
-        Assert.Equal(BarState.ExitGrace, sm.State);
-        Run(sm, 70, Outside);
-        Assert.Equal(BarState.Hidden, sm.State);
-        var a = Assert.Single(sm.DrainActions());
-        Assert.Equal(ShellActionKind.FlushAndHideAll, a.Kind);
-    }
+        for (int i = 0; i < 200; i++)
+        {
+            sm.Advance(50, i % 2 == 0 ? Outside : Hovering);
+        }
 
-    [Fact]
-    public void Returning_during_grace_cancels_the_hide()
-    {
-        var sm = OpenBar();
-        RunUntil(sm, BarState.ExitGrace, Outside);
-        Run(sm, 100, Inside);
-        Assert.Equal(BarState.OpenHover, sm.State);
-        Run(sm, 1000, Inside);
         Assert.Equal(BarState.OpenHover, sm.State);
         Assert.Empty(sm.DrainActions());
     }
@@ -193,13 +184,14 @@ public class BarStateMachineTests
     }
 
     [Fact]
-    public void Editor_focus_during_grace_cancels_the_pending_hide()
+    public void Editor_focus_from_open_hover_locks_the_bar()
     {
         var sm = OpenBar();
-        RunUntil(sm, BarState.ExitGrace, Outside);
         sm.EditorFocused();
+        Assert.Equal(BarState.OpenFocusedLock, sm.State);
         Run(sm, 1_000, Outside);
         Assert.Equal(BarState.OpenFocusedLock, sm.State);
+        Assert.Empty(sm.DrainActions());
     }
 
     [Fact]

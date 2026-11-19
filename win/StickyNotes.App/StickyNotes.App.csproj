@@ -27,4 +27,7 @@
           Visible="false" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="StickyNotes.Tests" />
+  </ItemGroup>
 </Project>

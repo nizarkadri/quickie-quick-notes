@@ -42,6 +42,8 @@ public interface IScreenPositioner
 
     PxRect GetGroupListRect(PxRect anchor, PxSize size, MonitorBounds monitor);
 
+    PxRect GetGroupPreviewRect(PxRect rowRect, PxSize size, MonitorBounds monitor);
+
     PxRect GetNoteWindowRect(PxRect anchor, PxSize size, MonitorBounds monitor, bool anchorIsHorizontalBarItem);
 }
 
@@ -52,6 +54,9 @@ public sealed class ScreenPositioner : IScreenPositioner
 
     /// <summary>Group list opens below its chip with this offset.</summary>
     public const int GroupListGapPx = 4;
+
+    /// <summary>v0.2.2+: the group side list docks to the RIGHT of the hovered row's dropdown, under this gap (physical px at 96 DPI).</summary>
+    public const int PreviewGapPx = 8;
 
     public const int TriggerDipWidth = 100;
     public const int TriggerDipHeight = 4;
@@ -104,6 +109,38 @@ public sealed class ScreenPositioner : IScreenPositioner
         }
 
         // Clamp vertically: never extend past the work area bottom.
+        int h = Math.Min(size.Height, wa.Bottom - top);
+        if (h < 0)
+        {
+            h = 0;
+        }
+
+        return new PxRect(left, top, w, h);
+    }
+
+    /// <summary>
+    /// v0.2.2+ (human amendment to blueprint §1): hovering a GROUP ROW inside the "Groups ▾" dropdown opens a
+    /// SIDE LIST of that group's notes, docked to the RIGHT of the dropdown and vertically aligned with the
+    /// hovered row. The all-groups dropdown stays open; bar group chips stay click-only. Clamps into the work
+    /// area (flips left of the row when the right edge has no room) so the result stays on-screen.
+    /// </summary>
+    public PxRect GetGroupPreviewRect(PxRect rowRect, PxSize size, MonitorBounds monitor)
+    {
+        PxRect wa = monitor.WorkArea;
+
+        int w = Math.Min(size.Width, wa.Width);
+        int left = rowRect.Right + PreviewGapPx;
+        if (left + w > wa.Right)
+        {
+            left = rowRect.Left - PreviewGapPx - w; // flip left of the row when the right edge has no room
+        }
+
+        if (left < wa.Left)
+        {
+            left = wa.Left;
+        }
+
+        int top = Math.Max(wa.Top, rowRect.Top);
         int h = Math.Min(size.Height, wa.Bottom - top);
         if (h < 0)
         {

@@ -64,3 +64,53 @@ Record the result (and the Windows build) next to each item.
 - [x] The bar sliding away (cursor leaves) leaves no orphan tooltip on screen. **(verified 2026-11-16)**
 - [x] Long bodies truncate at ~200 chars with an ellipsis; an empty note shows `(empty note)`. **(verified 2026-11-16)**
 - [x] The preview never creates a Taskbar/Alt+Tab entry and never becomes the foreground window (F11 fullscreen still suppresses the bar). **(verified 2026-11-16)**
+
+## F1 - Move a note into a group (v0.2.0)
+- [ ] Open a note that is in a group: the header shows `● <group> ▾`. Clicking it opens a menu with `Standalone`, every group, and `＋ New group…`.
+- [ ] Pick another group: the badge updates, the note disappears from the old group list and appears in the new one immediately (with the list open), and it persists after restart.
+- [ ] Pick `Standalone`: the note leaves the group, the badge shows `Move to group ▾`, and it persists after restart.
+- [ ] Pick `＋ New group…`: an inline text box appears in the note window. Type a name + Enter -> group is created, note moves into it, badge shows `● <name> ▾`, and the group appears in `Groups ▾` / the bar.
+- [ ] Blank name + Enter: nothing is created, the inline box keeps focus, no crash.
+- [ ] Esc in the inline box cancels it; Esc in the body still closes + flushes the note.
+- [ ] Click outside the move menu: the note closes immediately (no 5s grace).
+- [ ] The group-list header has a `×` close button; clicking it hides the list immediately.
+- [ ] Picking the current group again: no change, no crash.
+- [ ] No modal dialogs; focus returns to the note body after a pick.
+- [ ] Missing group/note (core error): no crash, note stays open.
+
+## F6 - Right-click context menus (v0.2.1)
+- [ ] Right-click a note chip in the bar -> menu: Open, Pin/Unpin, Move to group ▸, Delete.
+- [ ] Right-click a group chip in the bar -> menu: Open, New note, Add note… ▸, Rename, Pin/Unpin, Delete.
+- [ ] Right-click a note row in a group list -> same note menu; right-click a group row in `Groups ▾` (OpenAllGroups) -> same group menu.
+- [ ] Right-click no longer pins; Pin/Unpin is a menu item.
+- [ ] Move a note from Group A to Group B via the menu: it disappears from A and appears in B immediately (if B's list is open), the badge updates, and it persists after restart.
+- [ ] `New note` on a group creates an empty note in that group and focuses it.
+- [ ] `Add note…` lists recent notes (excluding notes already in the group); picking one moves it in. Empty -> `(no notes to add)`.
+- [ ] `Rename` on an UNPINNED group (OpenAllGroups row) switches the list to that group and opens the inline rename box.
+- [ ] `Delete` on an UNPINNED group (OpenAllGroups row) switches to that group and shows the inline `Delete 'X' and N notes?` confirm.
+- [ ] Note Delete: empty -> immediate; non-empty -> `Delete '<title>'?` + Delete/Cancel.
+- [ ] The bar stays visible while a context menu is open; clicking away closes the menu and the bar hides normally.
+- [ ] No focus theft: right-clicking a bar chip does not take focus from Terminal; right-clicking a list row does not either.
+- [ ] `＋ New group…` from a note menu opens the note (if not already open) with the inline new-group box; typing a name + Enter creates the group and moves the note. If the note is already open, it reuses it (no recents bump).
+- [ ] No modal dialogs.
+- [ ] Focused open (`+ New Note` or a group's `New note`) focuses the body and never throws "Cannot call Activate before a Window is shown".
+
+## v0.2.2 - Consistent close + 2s bar exit fade
+- [ ] Cursor outside every app surface (no editor focused): quick note commits + closes, note flushes + closes, group list closes; the bar fades 1 -> 0 over ~2 s and is gone.
+- [ ] Re-enter any app surface during the fade: the fade cancels, the bar returns to full opacity and stays.
+- [ ] Focused editor (typing in a note or the quick note) + cursor on the desktop: the editor stays open and the bar stays fully opaque (no fade).
+- [ ] Editor closes (Esc / click another app) while the cursor is outside: the bar starts the 2 s fade instead of vanishing instantly.
+- [ ] Moving between bar <-> group list <-> note <-> quick note: nothing closes, no fade.
+- [ ] No orphan windows or tooltips after the bar disappears.
+- [ ] Focused open (`+ New Note` / group `New note`) focuses the body and never throws "Cannot call Activate before a Window is shown".
+
+## v0.2.2+ bug-fix batch (post-sign-off)
+- [ ] Cursor leaving the bar during the 2 s fade then returning: the fade CANCELS (bar returns to opacity 1) — the hit tracker keeps polling while the bar is visible, so re-entry is seen.
+- [ ] Hovering `Groups ▾` (~180 ms) opens the all-groups dropdown on its own; a quick pass opens nothing; clicking the chip still opens/toggles immediately, and a click on a dropdown that was opened by hover KEEPS it open instead of closing it.
+- [ ] Hovering a GROUP ROW inside the `Groups ▾` dropdown (~180 ms) opens a SIDE LIST of that group's notes to the RIGHT of the dropdown, vertically aligned with the row; the dropdown stays open; a quick pass does nothing; hovering another group row switches the side list's content; bar group chips stay click-only; nothing steals focus.
+- [ ] Moving the cursor from the group row into the side list keeps it open (no 4 px gap blink); leaving the row AND the side list closes the side list after ~200 ms; closing the `Groups ▾` dropdown closes the side list too; no ghost surface or window is left behind.
+- [ ] Clicking a note in the side list opens the note AND the side list stays visible; clicking a group row still switches the dropdown to that group (and closes the side list).
+- [ ] `+` opens the quick note WITH keyboard focus (caret blinking in the box) even when the foreground app is elevated.
+- [ ] Quick note no longer closes when it merely loses the OS foreground while the user keeps typing in it (focus still inside the window).
+- [ ] Quick note has a × close button (top right): discards, same as Esc.
+- [ ] Quick note still closes on click-outside (cursor leaves all app surfaces) and commits if non-empty.

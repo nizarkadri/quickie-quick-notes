@@ -10,8 +10,10 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Controls.Primitives;
+using System.Windows.Threading;
 using StickyNotes.App.Core;
 using StickyNotes.App.Interop;
+using StickyNotes.App.State;
 
 namespace StickyNotes.App.Windows;
 
@@ -36,6 +38,7 @@ public partial class BarWindow : Window
 
         Visibility = Visibility.Hidden;
         ShowActivated = false;
+        _chipDwellTimer.Tick += (_, _) => PollChipDwell();
     }
 
     public nint HMonitor { get; private set; }
@@ -48,10 +51,22 @@ public partial class BarWindow : Window
     /// <summary>A left-rail or recents chip (or the trailing 'Groups ▾' button) was activated. Tag: "group:{id}" | "note:{id}" | "groups-menu".</summary>
     public event EventHandler<BarChipEventArgs>? ChipActivated;
 
-    /// <summary>Right-click on a chip — toggle pin. Same tag grammar as <see cref="ChipActivated"/>.</summary>
-    public event EventHandler<BarChipEventArgs>? ChipPinToggleRequested;
+    /// <summary>Right-click on a chip — open the note/group context menu. Same tag grammar as <see cref="ChipActivated"/>.</summary>
+    public event EventHandler<BarContextMenuEventArgs>? ContextMenuRequested;
+
+    /// <summary>
+    /// v0.2.2+: the pointer entered/left the 'Groups ▾' chip, or that chip's ~180ms dwell completed
+    /// (DwellReady fires ONCE per uninterrupted hover, from this window's own 50ms poll).
+    /// </summary>
+    public event EventHandler<BarChipHoverEventArgs>? ChipHovered;
 
     private readonly Dictionary<string, Button> _chips = new();
+
+    // HOVER-OPEN for 'Groups ▾': a pointer that SITS on the chip raises no further MouseEnter events,
+    // so the dwell needs its own poll. Started on enter, stopped once it fires (one-shot) or on leave.
+    private readonly HoverDwellTracker _chipDwell = new();
+    private readonly DispatcherTimer _chipDwellTimer = new() { Interval = TimeSpan.FromMilliseconds(50) };
+    private string? _hoveredChipTag;
 
     // F4: one non-activating ToolTip per note chip; closed when the bar hides or a chip is clicked.
     private readonly Dictionary<string, TextBlock> _tips = new();
@@ -80,6 +95,7 @@ public partial class BarWindow : Window
     public void Rebuild(BarSnapshot snapshot)
     {
         CloseTips();
+        ResetChipHover(); // the chips being replaced must not fire a dwell from a dead button
         _chips.Clear();
         _tips.Clear();
 
@@ -136,6 +152,54 @@ public partial class BarWindow : Window
         return true;
     }
 
+    private void BeginChipHover(string tag)
+    {
+        if (tag != _hoveredChipTag)
+        {
+            _hoveredChipTag = tag;
+            _chipDwell.Reset();
+        }
+
+        _chipDwell.Poll(true, Environment.TickCount64); // seed the dwell NOW — a pointer that just SITS raises no further events
+        _chipDwellTimer.Start();
+    }
+
+    private void PollChipDwell()
+    {
+        if (!IsLoaded || _hoveredChipTag is null)
+        {
+            _chipDwellTimer.Stop();
+            return;
+        }
+
+        if (_chipDwell.Poll(true, Environment.TickCount64) == HoverDwellTracker.HoverStage.Ready)
+        {
+            _chipDwell.Reset();     // one DwellReady per uninterrupted hover
+            _chipDwellTimer.Stop(); // one-shot: a stationary pointer must not re-open the list every ~180ms
+            ChipHovered?.Invoke(this, new BarChipHoverEventArgs(_hoveredChipTag, inside: true, dwellReady: true));
+        }
+    }
+
+    private void EndChipHover(string tag)
+    {
+        if (tag == _hoveredChipTag)
+        {
+            _hoveredChipTag = null;
+            ChipHovered?.Invoke(this, new BarChipHoverEventArgs(tag, inside: false));
+        }
+
+        _chipDwell.Reset();
+        _chipDwellTimer.Stop();
+    }
+
+    /// <summary>Drop all chip-hover state (rebuild/hide): a stale dwell must never open a fresh list.</summary>
+    private void ResetChipHover()
+    {
+        _chipDwellTimer.Stop();
+        _chipDwell.Reset();
+        _hoveredChipTag = null;
+    }
+
     private Button BuildChip(string tag, string label, bool strikePinned, bool isMenu = false)
     {
         var chip = new Button
@@ -177,15 +241,25 @@ public partial class BarWindow : Window
             CloseTips();
             ChipActivated?.Invoke(this, new BarChipEventArgs(tag));
         };
-        chip.MouseRightButtonUp += (_, _) =>
+        chip.MouseRightButtonUp += (_, e) =>
         {
+            e.Handled = true; // don't also fire the left-click path
             CloseTips();
-            ChipPinToggleRequested?.Invoke(this, new BarChipEventArgs(tag));
+            if (TryGetChipRect(tag, out PxRect anchor))
+            {
+                ContextMenuRequested?.Invoke(this, new BarContextMenuEventArgs(tag, chip, anchor));
+            }
         };
 
         if (tag.StartsWith("note:", StringComparison.Ordinal))
         {
             AttachNotePreview(chip, tag);
+        }
+        else if (isMenu)
+        {
+            // 'Groups ▾' opens ON HOVER (~180ms) as well as on click.
+            chip.MouseEnter += (_, _) => BeginChipHover(tag);
+            chip.MouseLeave += (_, _) => EndChipHover(tag);
         }
 
         _chips[tag] = chip;
@@ -265,9 +339,12 @@ public partial class BarWindow : Window
         PxRect rect = _positioner.GetBarRect(bounds, dpi);
         Width = rect.Width / dpi;
         Height = rect.Height / dpi;
+        Left = rect.X / dpi;
+        Top = rect.Y / dpi;
 
         HMonitor = hMonitor;
         CurrentBounds = bounds;
+        Root.Opacity = 1.0; // a re-show after an exit fade must come back fully opaque
         int token = ++_visibilityToken; // invalidate any pending hide-completion
 
         double startDipY = -(rect.Height / dpi); // DIP transform — never physical px
@@ -285,10 +362,14 @@ public partial class BarWindow : Window
         transform.BeginAnimation(TranslateTransform.YProperty, slide);
     }
 
+    /// <summary>v0.2.2: set the bar content opacity (0..1) — used by the 2s linear exit fade.</summary>
+    public void SetOpacity(double value) => Root.Opacity = Math.Clamp(value, 0.0, 1.0);
+
     /// <summary>Slide the bar up (100ms) then hide it. Mid-animation re-show wins via the visibility token.</summary>
     public void HideBar()
     {
         CloseTips(); // a tooltip must not linger after the bar slides away
+        ResetChipHover(); // a hidden bar must never open a dropdown on a stale dwell
 
         if (Visibility != Visibility.Visible)
         {
@@ -342,9 +423,30 @@ public partial class BarWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        ResetChipHover();
         FocusHelper.ForgetWindow(new WindowInteropHelper(this).Handle);
         base.OnClosed(e);
     }
+}
+
+/// <summary>v0.2.2+: a chip hover started/ended, or its ~180ms dwell completed (<see cref="DwellReady"/>).</summary>
+public sealed class BarChipHoverEventArgs : EventArgs
+{
+    public BarChipHoverEventArgs(string tag, bool inside = true, bool dwellReady = false)
+    {
+        Tag = tag;
+        Inside = inside;
+        DwellReady = dwellReady;
+    }
+
+    /// <summary>"groups-menu" (hover-open is wired for the 'Groups ▾' chip only).</summary>
+    public string Tag { get; }
+
+    /// <summary>True while the pointer is over the chip; false on leave.</summary>
+    public bool Inside { get; }
+
+    /// <summary>True on the single event fired when an uninterrupted ~180ms dwell completes.</summary>
+    public bool DwellReady { get; }
 }
 
 public sealed class BarChipEventArgs : EventArgs
@@ -353,4 +455,24 @@ public sealed class BarChipEventArgs : EventArgs
 
     /// <summary>"group:{id}" | "note:{id}" | "groups-menu".</summary>
     public string Tag { get; }
+}
+
+/// <summary>F6: right-click on a bar chip — coordinator builds and opens the context menu.</summary>
+public sealed class BarContextMenuEventArgs : EventArgs
+{
+    public BarContextMenuEventArgs(string tag, Button target, PxRect anchor)
+    {
+        Tag = tag;
+        Target = target;
+        Anchor = anchor;
+    }
+
+    /// <summary>"group:{id}" | "note:{id}" | "groups-menu".</summary>
+    public string Tag { get; }
+
+    /// <summary>The chip to anchor the ContextMenu to.</summary>
+    public Button Target { get; }
+
+    /// <summary>Screen rect of the chip (used as the note-window anchor).</summary>
+    public PxRect Anchor { get; }
 }

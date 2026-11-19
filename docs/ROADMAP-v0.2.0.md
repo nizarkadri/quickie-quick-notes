@@ -96,7 +96,9 @@ Five user-requested features were deferred because each either needs a design de
 
 **Conflict:** this **reverses blueprint §1** ("Group Expansion: Click-to-Open, Single Open List"). It needs an explicit blueprint amendment.
 
-**Design:** reuse the existing 180 ms dwell + `GroupListWindow` + the 200 ms `ExitGrace` so a quick pass doesn't open it. Must not fight the 100 px trigger dwell.
+**AMENDMENT (approved 2026-11-17, shipped in v0.2.2+):** blueprint §1 is amended as the human clarified it — "the group IN the list, not the list of groups": hovering `Groups ▾` for ~180 ms OPENS the all-groups dropdown (a click still opens/toggles it immediately, and a click on a hover-opened dropdown keeps it open). Hovering a GROUP ROW inside that dropdown for ~180 ms opens a SIDE LIST of that group's notes to the RIGHT of the dropdown, vertically aligned with the hovered row (`ScreenPositioner.GetGroupPreviewRect`). The side list is ADDITIVE (the dropdown stays open), never steals focus, closes after a ~200 ms grace once the cursor leaves both the row and the side list, and closes with the dropdown. Clicking a note in the side list opens the note and keeps the side list visible; clicking a group row still switches the dropdown to that group's notes; bar group chips remain click-only.
+
+**Design:** reuse the existing 180 ms `HoverDwellTracker` dwell (one-shot 50 ms poll inside `BarWindow` / `GroupListWindow`, so a stationary pointer never re-fires) and the 50 ms tick for the ~200 ms leave grace; the side list is its own non-activating `GroupPreviewWindow`, republished into the hit surfaces while visible and dropped when hidden. Must not fight the 100 px trigger dwell.
 
 **Risk:** medium (UX, not code). Hover-dwell on a bar chip is twitchy next to the top-edge trigger.
 

@@ -8,9 +8,13 @@ namespace StickyNotes.App.Interop;
 /// Drives keep-open / auto-hide decisions for the bar + flyouts (blueprint §8.1).
 /// A 50ms GetCursorPos poll runs ONLY while <see cref="IsVisible"/> is true — zero idle CPU.
 /// Visible surfaces (Trigger, Bar, GroupList, NoteWindow, QuickNote) are treated as their rects
-/// inflated by <see cref="HitInflateDip"/> DIPs. When the cursor leaves every surface, a
-/// <see cref="ExitGraceMs"/> one-shot grace timer starts; re-entering cancels it; on elapse
-/// <see cref="ExitCompleted"/> fires. Hiding stops BOTH timers completely.
+/// inflated by <see cref="HitInflateDip"/> DIPs.
+///
+/// v0.2.2+: the coordinator's 2s bar fade (BarExitPolicy) owns the exit timing, so the legacy
+/// exit-grace machinery is retired — <see cref="ExitGraceStarted"/> / <see cref="ExitGraceResolved"/>
+/// are deleted and the grace timer is parked in <see cref="PollTick"/>. <see cref="ExitCompleted"/>
+/// remains declared for contract compatibility but is INERT (never raised); Hiding stops the poll is
+/// done by <see cref="SetVisible(false)"/> / <see cref="Dispose"/> only.
 ///
 /// Events fire on a threadpool timer thread — WPF consumers must marshal to the UI dispatcher.
 ///
@@ -35,13 +39,7 @@ public sealed class HitRegionTracker : IDisposable
     private double _dpi = 1.0;
     private IReadOnlyList<PxRect>? _surfaces; // non-null ⇒ push mode (SetSurfaces was used)
 
-    /// <summary>Raised when the cursor first leaves all visible surfaces (exit grace begins).</summary>
-    public event EventHandler? ExitGraceStarted;
-
-    /// <summary>Raised when the cursor re-enters a surface during the exit grace window.</summary>
-    public event EventHandler? ExitGraceResolved;
-
-    /// <summary>Raised after <see cref="ExitGraceMs"/> with the cursor outside every surface. Consumers must hide the bar.</summary>
+    /// <summary>Raised after <see cref="ExitGraceMs"/> with the cursor outside every surface. Consumers must hide the bar. INERT since v0.2.2 (the coordinator's 2s fade owns the exit); kept only for contract compatibility.</summary>
     public event EventHandler? ExitCompleted;
 
     /// <summary>Push model: no provider is ever invoked. Rects are snapshotted as-is (callers should hand over immutable/copy lists).</summary>
@@ -49,6 +47,7 @@ public sealed class HitRegionTracker : IDisposable
     {
         _pollTimer = new Timer(PollTick, null, Timeout.Infinite, Timeout.Infinite);
         _graceTimer = new Timer(GraceElapsed, null, Timeout.Infinite, Timeout.Infinite);
+        _poseProvider = ProbePose;
     }
 
     /// <summary>Pull model: the provider is invoked on a threadpool thread — it must not touch WPF-owned objects. Prefer <see cref="SetSurfaces"/>.</summary>
@@ -80,10 +79,55 @@ public sealed class HitRegionTracker : IDisposable
 
     private bool _cursorInside;
 
+    /// <summary>
+    /// Pose used by <see cref="IsCursorInside"/>. Production keeps the OS-probed pose (push surfaces or
+    /// the pull provider); callers that cannot probe the cursor (test hosts, UIPI-blocked reads) may
+    /// inject a pure pose via <see cref="SetCursorPose"/>. Fail-safe default: true — a transient probe
+    /// failure must never close an open editor.
+    /// </summary>
+    private Func<bool> _poseProvider = () => true; // replaced by ProbePose in the ctor; SetCursorPose may override it
+
+    /// <summary>Inject the cursor pose (test hosts / UIPI-blocked probes). Thread-safe; takes effect on the next poll.</summary>
+    internal void SetCursorPose(Func<bool> poseProvider) => _poseProvider = poseProvider ?? throw new ArgumentNullException(nameof(poseProvider));
+
     /// <summary>Last probed cursor-inside state (updated on every poll tick). Reads take <c>_sync</c>.</summary>
     public bool IsCursorInside
     {
         get { lock (_sync) { return _cursorInside; } }
+    }
+
+    /// <summary>Production pose: hit-test the published surfaces against the OS cursor (pull model supported). Fail-safe true on any probe failure.</summary>
+    private bool ProbePose()
+    {
+        IReadOnlyList<PxRect>? surfaces;
+        Func<IReadOnlyList<PxRect>>? pull;
+        double dpi;
+        lock (_sync)
+        {
+            if (_disposed)
+            {
+                return true;
+            }
+
+            dpi = _dpi;
+            surfaces = _surfaces;
+            pull = _regionsProvider;
+        }
+
+        try
+        {
+            if (surfaces is null && pull is not null)
+            {
+                surfaces = pull() ?? Array.Empty<PxRect>(); // pull model: invoked by the caller of PollTick
+            }
+
+            int inflate = (int)Math.Round(HitInflateDip * dpi);
+            return CursorInsideInflated(surfaces ?? Array.Empty<PxRect>(), inflate);
+        }
+        catch
+        {
+            return true; // fail-safe: a transient probe failure must never close an open editor
+        }
     }
 
     /// <summary>DPI scale used to inflate the hit regions (12 DIPs → physical px).</summary>
@@ -156,79 +200,28 @@ public sealed class HitRegionTracker : IDisposable
 
     private void PollTick(object? state)
     {
-        double dpi;
         lock (_sync)
         {
             if (_disposed || !_visible)
             {
-                return; // disposed or already hidden — never touch the timers
+                return; // disposed or explicitly hidden (SetVisible(false)) — never touch the timers
             }
 
-            dpi = _dpi;
+            // v0.2.2+: the 2s bar fade (ShellCoordinator + BarExitPolicy) owns the exit timing now.
+            // Keep polling while the caller keeps us visible so a re-entry during the fade is
+            // observed; the legacy grace timer is parked (ExitCompleted stays inert). Stopping is
+            // SetVisible(false)/Dispose only.
+            _outside = false;
+
+            _cursorInside = _poseProvider();
         }
-
-        IReadOnlyList<PxRect>? surfaces;
-        lock (_sync)
-        {
-            surfaces = _surfaces;
-        }
-
-        bool inside;
-        try
-        {
-            if (surfaces is null)
-            {
-                if (_regionsProvider is null)
-                {
-                    surfaces = Array.Empty<PxRect>();
-                }
-                else
-                {
-                    // Pull model: invoked on the threadpool thread — the provider must not
-                    // touch WPF-owned objects. Prefer SetSurfaces (push model).
-                    surfaces = _regionsProvider() ?? Array.Empty<PxRect>();
-                }
-            }
-
-            int inflate = (int)Math.Round(HitInflateDip * dpi);
-            inside = CursorInsideInflated(surfaces, inflate);
-        }
-        catch
-        {
-            // Fail-safe: a transient probe failure must never close an open editor.
-            inside = true;
-        }
-
-        EventHandler? started = null, resolved = null;
-        lock (_sync)
-        {
-            if (_disposed || !_visible)
-            {
-                return;
-            }
-
-            _cursorInside = inside;
-            if (inside)
-            {
-                if (_outside)
-                {
-                    _outside = false;
-                    _graceTimer.Change(Timeout.Infinite, Timeout.Infinite);
-                    resolved = ExitGraceResolved;
-                }
-            }
-            else if (!_outside)
-            {
-                _outside = true;
-                _graceTimer.Change(ExitGraceMs, Timeout.Infinite);
-                started = ExitGraceStarted;
-            }
-        }
-
-        started?.Invoke(this, EventArgs.Empty);
-        resolved?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>
+    /// Legacy exit path, kept inert: the coordinator's 2s bar fade owns the exit timing, so the
+    /// grace window is parked in <see cref="PollTick"/> and this callback only ever fires if a caller
+    /// manually arms <see cref="ExitGraceMs"/>. Never hides the tracker or stops the poll.
+    /// </summary>
     private void GraceElapsed(object? state)
     {
         EventHandler? completed = null;
@@ -236,12 +229,10 @@ public sealed class HitRegionTracker : IDisposable
         {
             if (_disposed || !_visible || !_outside)
             {
-                return; // re-entered during the grace window, or disposed
+                return; // re-entered during the grace window, disposed, or already hidden
             }
 
             _outside = false;
-            _visible = false;
-            _pollTimer.Change(Timeout.Infinite, Timeout.Infinite);
             _graceTimer.Change(Timeout.Infinite, Timeout.Infinite);
             completed = ExitCompleted;
         }

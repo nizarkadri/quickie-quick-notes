@@ -13,3 +13,6 @@ obj/
 dist/
 # Native DLL staged by scripts/build.ps1 (regenerated on build)
 win/StickyNotes.App/runtimes/
+# Local review/test scratch (not committed)
+/.review/
+win/StickyNotes.Tests/TestResults/
