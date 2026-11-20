@@ -39,7 +39,19 @@ public partial class BarWindow : Window
         Visibility = Visibility.Hidden;
         ShowActivated = false;
         _chipDwellTimer.Tick += (_, _) => PollChipDwell();
+
+        // Right-click on the bar background (not on a chip — chips mark the event handled) opens the
+        // app menu (Settings…/Exit). The coordinator builds the menu so bar-hide suppression stays in
+        // one place.
+        Root.MouseRightButtonUp += (_, _) =>
+        {
+            CloseTips();
+            SettingsMenuRequested?.Invoke();
+        };
     }
+
+    /// <summary>Right-click on the bar background (not a chip): open the app menu (Settings…/Exit).</summary>
+    public event Action? SettingsMenuRequested;
 
     public nint HMonitor { get; private set; }
 

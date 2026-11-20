@@ -32,12 +32,21 @@ _Avoid_: Handle, tab, hot corner
 The invisible area around the Trigger notch that counts as hovering it.
 _Avoid_: Hover zone, trigger area
 
+**Notes location**:
+The filesystem directory that holds the notes database (`sticky.db`); user-configurable in Settings and distinct from a Group. Defaults to `%LOCALAPPDATA%\StickyNotes`.
+_Avoid_: Folder, save folder, storage path, directory
+
+**Start with Windows**:
+The user setting (Settings) that launches StickyNotes automatically at logon, backed by the per-user HKCU `...\CurrentVersion\Run` value.
+_Avoid_: Auto-start, startup app, launch on boot
+
 ## Relationships
 
 - A **Note** has at most one **Title**; when absent, its **Title preview** is displayed.
 - A **Note** belongs to zero or one **Group**.
 - An **Empty note** that was created during the current open and is not pinned is deleted on close.
 - A **Trigger notch** is revealed by its **Hit target**; the two need not be the same size.
+- The **Notes location** defaults to `%LOCALAPPDATA%\StickyNotes` and can be changed in Settings; a change takes effect on the next launch (the notes database is moved there). **Start with Windows** is independent of it.
 
 ## Example dialogue
 
@@ -48,3 +57,4 @@ _Avoid_: Hover zone, trigger area
 
 - "title" was ambiguous between the user-set label and the derived preview — resolved: **Title** is explicit and nullable; **Title preview** is derived and always present.
 - "clearing a title" means the Note has no **Title** (stored `NULL`), never an empty string.
+- "folder" is avoided everywhere: a **Group** is not a folder, and the on-disk **Notes location** is the only real filesystem directory in the domain.

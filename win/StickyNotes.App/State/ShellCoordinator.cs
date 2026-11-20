@@ -120,6 +120,7 @@ public sealed class ShellCoordinator : IDisposable
         _dbPath = dbPath ?? throw new ArgumentNullException(nameof(dbPath));
         _bar = new BarWindow();
         _bar.QuickCaptureRequested += (_, _) => OpenQuickNote();
+        _bar.SettingsMenuRequested += ShowAppMenu;
         _bar.ChipActivated += OnChipActivated;
         _bar.ChipHovered += OnChipHovered;
         _bar.ContextMenuRequested += OnBarContextMenuRequested;
@@ -176,6 +177,39 @@ public sealed class ShellCoordinator : IDisposable
         _bar.PreviewResolver = ResolveNotePreview;
         _list.PreviewResolver = ResolveNotePreview;
         _groupPreview.PreviewResolver = ResolveNotePreview; // Bug 2: side-list note rows get the same bubble
+    }
+
+    /// <summary>Raised when the user picks "Settings…" from the app menu (bar right-click). App opens the settings window.</summary>
+    public event Action? SettingsRequested;
+
+    /// <summary>Raised when the user picks "Exit" from the app menu (bar right-click). App runs its shutdown path.</summary>
+    public event Action? ExitRequested;
+
+    /// <summary>App menu shown on a bar-background right-click: Settings… / Exit. Owned here so bar-hide suppression stays centralized.</summary>
+    private void ShowAppMenu()
+    {
+        var menu = new ContextMenu
+        {
+            Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint,
+        };
+
+        var settings = new MenuItem { Header = "Settings…" };
+        settings.Click += (_, _) => SettingsRequested?.Invoke();
+        menu.Items.Add(settings);
+
+        var exit = new MenuItem { Header = "Exit" };
+        exit.Click += (_, _) => ExitRequested?.Invoke();
+        menu.Items.Add(exit);
+
+        _activeMenu = menu;
+        menu.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_activeMenu, menu))
+            {
+                _activeMenu = null;
+            }
+        };
+        menu.IsOpen = true;
     }
 
     /// <summary>30s-delayed one-shot idle trim: hides memory pressure without stuttering the 100ms hide animation or evicting the pre-created windows.</summary>

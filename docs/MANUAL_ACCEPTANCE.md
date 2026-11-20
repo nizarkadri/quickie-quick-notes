@@ -124,6 +124,19 @@ Record the result (and the Windows build) next to each item.
 - [ ] **Independent of the bar fade:** closing the dropdown this way never starts the bar's 2 s fade; and moving off everything (bar included) still runs the normal fade + close.
 - [ ] **Side-list hover preview (Bug 2):** hover a note row inside the `Groups ▾` SIDE LIST — the same read-only body bubble as the main list rows appears (same delay, bottom-placed, ~200-char truncation, `(empty note)` for empty); it never steals focus and does not reorder Recents. Moving away dismisses it; re-showing the side list for another group leaves no stale bubble.
 
+## Settings - notes location + start with Windows
+- [ ] **Reach it two ways:** right-click an empty part of the BAR → menu has `Settings…` / `Exit`; and right-click the TRAY icon → menu has `Settings…` / `Exit`. Both open the same settings window. (Right-clicking a note/group CHIP still opens that chip's own menu, not the app menu.)
+- [ ] **Notes location shown:** the window shows the current notes folder and the `Database:` path. On a fresh install this is `%LOCALAPPDATA%\StickyNotes`.
+- [ ] **Browse… + Save (folder change):** Browse… to another folder (e.g. `D:\Notes`), Save. The window notes the change takes effect after restart. Restart the app: notes are now saved in the new folder, and existing notes were MOVED there (open the app, your notes are all still present).
+- [ ] **No data loss / no duplicate:** after the move, the old default location's `sticky.db` is left as-is (not deleted), the new folder holds the live DB, and the app does not recreate/branch notes.
+- [ ] **Target folder already has notes:** point at a folder that already contains a `sticky.db` → the app uses that existing DB (does NOT overwrite it with a copy).
+- [ ] **Start with Windows ON:** tick the box, Save. Verify `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` has a `StickyNotes` value = the quoted exe path (regedit), and that Settings → Startup apps lists it. Log off/on (or reboot): StickyNotes launches automatically.
+- [ ] **Start with Windows OFF:** untick, Save → the `StickyNotes` Run value is removed and it no longer auto-launches.
+- [ ] **Cancel:** change folder + toggle, then Cancel (or Esc / window ×) → nothing is saved; reopening Settings shows the original values.
+- [ ] **Single instance:** clicking Settings… again while the window is open focuses the existing window (does not open a second copy).
+- [ ] **No taskbar/alt-tab regressions elsewhere:** the settings window may appear in the taskbar (it is an explicit dialog); the trigger/bar/note/quick-note still never create taskbar entries.
+- [ ] **Open note + settings:** with a note open, opening Settings does not corrupt/duplicate the note (note may flush normally per existing cursor-out rules).
+
 ## F2 - Explicit note titles (v0.2.0)
 - [ ] `+` → type a title in the title row → Enter (focus moves to the body) → type body → close → reopen: the chip, group rows, side list, append picker, and note header show the title.
 - [ ] Clear the title (empty the row, leave the note): the chip falls back to the first body line (or `New note` for an empty body).

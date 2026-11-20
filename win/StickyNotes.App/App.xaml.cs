@@ -70,6 +70,8 @@ public partial class App : Application
     private HwndSource? _traySink;
     private IntPtr _trayIcon;
     private State.ShellCoordinator? _coordinator;
+    private State.AppSettings _settings = new();
+    private Windows.SettingsWindow? _settingsWindow;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -88,11 +90,25 @@ public partial class App : Application
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "StickyNotes");
         Directory.CreateDirectory(dbDir);
-        string dbPath = Path.Combine(dbDir, "sticky.db");
+        string defaultDbPath = Path.Combine(dbDir, "sticky.db");
+
+        // Notes location is user-configurable (settings.json). Resolve the target DB path, and if the
+        // chosen folder has no database yet, seed it by moving the most recent existing DB there
+        // (folder change takes effect on THIS launch — the previous run recorded the change).
+        _settings = State.AppSettingsStore.Load();
+        string dbPath = State.AppSettingsStore.ResolveDbPath(_settings);
+        State.StorageMigration.SeedDatabaseIfMissing(dbPath, _settings.PreviousDbPath, defaultDbPath);
+        if (!string.Equals(dbPath, _settings.PreviousDbPath, StringComparison.OrdinalIgnoreCase))
+        {
+            _settings.PreviousDbPath = dbPath; // remember where the live DB is for the next folder change
+            State.AppSettingsStore.Save(_settings);
+        }
 
         CreateTrayIcon();
 
         _coordinator = new State.ShellCoordinator(dbPath);
+        _coordinator.SettingsRequested += OpenSettingsWindow;
+        _coordinator.ExitRequested += Shutdown;
         _coordinator.Start();
     }
 
@@ -216,6 +232,10 @@ public partial class App : Application
     private void ShowTrayMenu()
     {
         var menu = new ContextMenu();
+        var settingsItem = new MenuItem { Header = "Settings…" };
+        settingsItem.Click += (_, _) => OpenSettingsWindow();
+        menu.Items.Add(settingsItem);
+
         var exitItem = new MenuItem { Header = "Exit" };
         exitItem.Click += (_, _) => Shutdown();
         menu.Items.Add(exitItem);
@@ -223,6 +243,21 @@ public partial class App : Application
         // WPF converts the mouse position itself — no physical/DIP math needed.
         menu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
         menu.IsOpen = true;
+    }
+
+    /// <summary>Open the settings dialog (single instance). Reloads preferences so it always shows current values.</summary>
+    private void OpenSettingsWindow()
+    {
+        if (_settingsWindow is { IsLoaded: true })
+        {
+            _settingsWindow.Activate();
+            return;
+        }
+
+        _settings = State.AppSettingsStore.Load();
+        _settingsWindow = new Windows.SettingsWindow(_settings);
+        _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+        _settingsWindow.Show();
     }
 
 }
