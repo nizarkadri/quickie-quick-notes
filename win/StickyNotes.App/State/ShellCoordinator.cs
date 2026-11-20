@@ -29,6 +29,9 @@ public sealed class ShellCoordinator : IDisposable
     /// <summary>v0.2.2+: grace before a hovered group side list closes once the cursor has left both the row and the list.</summary>
     private const int PreviewLeaveGraceMs = 200;
 
+    /// <summary>Grace before an open dropdown closes once the cursor has left its whole keep-open cluster (chip+corridor, list, side preview, list-owned note).</summary>
+    private const int ListViewLeaveGraceMs = 200;
+
     private readonly string _dbPath;
     private readonly ScreenPositioner _positioner = new();
     private readonly DispatcherTimer _tick;
@@ -42,6 +45,8 @@ public sealed class ShellCoordinator : IDisposable
     private BarSnapshot? _lastSnapshot;
     private string? _openListAnchorTag; // anchor tag of the currently-open GroupListWindow ("groups-menu" | "group:{id}")
     private bool _listOpenedByHover;    // the open dropdown appeared from a hover dwell (not a click): a click on the chip keeps it open
+    private long? _listOwnedNoteId;      // note window spawned from the open dropdown: only it keeps the dropdown open (strict origin)
+    private DateTime? _listLeaveGraceUtc; // cursor first seen outside the dropdown's keep-open cluster → grace countdown
     private NoteSort _allNotesSort = NoteSort.Recent; // the all-notes dropdown's order, remembered between opens
     private ContextMenu? _activeMenu;   // F6: the open note/group menu (keeps the bar alive; self-heals via IsOpen)
 
@@ -170,6 +175,7 @@ public sealed class ShellCoordinator : IDisposable
         // F4: read-only hover previews for note chips/rows (never mark the note opened).
         _bar.PreviewResolver = ResolveNotePreview;
         _list.PreviewResolver = ResolveNotePreview;
+        _groupPreview.PreviewResolver = ResolveNotePreview; // Bug 2: side-list note rows get the same bubble
     }
 
     /// <summary>30s-delayed one-shot idle trim: hides memory pressure without stuttering the 100ms hide animation or evicting the pre-created windows.</summary>
@@ -389,6 +395,33 @@ public sealed class ShellCoordinator : IDisposable
             }
         }
 
+        // Bug 1: an open dropdown stays open ONLY while the cursor is inside its keep-open cluster (anchor
+        // chip + chip→list corridor, the list itself, the side preview, and the note it spawned). The bar or
+        // an unrelated note no longer holds it open. This is fully INDEPENDENT of the bar's 2 s fade below:
+        // it only ever closes the dropdown, never starts the fade. Suppressed while a focused inline edit or
+        // an originating context menu owns the interaction (so the field/menu isn't yanked out from under the
+        // user); the grace timer is held reset in that window.
+        if (_openListAnchorTag is not null)
+        {
+            bool suppress = _list.IsEditing || _activeMenu is { IsOpen: true };
+            if (suppress)
+            {
+                _listLeaveGraceUtc = null;
+            }
+            else if (CursorInListKeepOpenRegion())
+            {
+                _listLeaveGraceUtc = null;
+            }
+            else if (_listLeaveGraceUtc is null)
+            {
+                _listLeaveGraceUtc = now;
+            }
+            else if (_listLeaveGraceUtc is { } left && (long)(now - left).TotalMilliseconds >= ListViewLeaveGraceMs)
+            {
+                CloseList();
+            }
+        }
+
         if (_outsideSinceUtc is { } since)
         {
             long ms = (long)(now - since).TotalMilliseconds;
@@ -558,6 +591,50 @@ public sealed class ShellCoordinator : IDisposable
     private bool CursorOverOpenNote() =>
         _noteWindow is { } note && note.TryGetPhysicalRect(out PxRect r) && CursorIn(r);
 
+    /// <summary>
+    /// Bug 1: the dropdown's keep-open cluster — the anchor chip (+ the chip→list corridor that the bar
+    /// already publishes), the list window, the side preview (all-groups only), and the note the dropdown
+    /// spawned (strict origin: a bar-opened note is NOT in the cluster). Cursor anywhere here keeps the
+    /// dropdown open; anywhere else (bar, unrelated note, empty space) does not.
+    /// </summary>
+    private bool CursorInListKeepOpenRegion()
+    {
+        if (_openListAnchorTag is null)
+        {
+            return false;
+        }
+
+        // Anchor chip + the few-px corridor down to the list (mirrors PublishSurfaces' bar extension), so a
+        // cursor resting on the chip that opened the dropdown — or crossing into the list — reads as inside.
+        if (_bar.TryGetChipRect(_openListAnchorTag, out PxRect chip))
+        {
+            chip = chip with { Height = chip.Height + ScreenPositioner.GroupListGapPx };
+            if (CursorIn(chip))
+            {
+                return true;
+            }
+        }
+
+        if (_list.TryGetPhysicalRect(out PxRect listRect) && CursorIn(listRect))
+        {
+            return true;
+        }
+
+        if (_groupPreview is not null && _groupPreview.TryGetPhysicalRect(out PxRect previewRect) && CursorIn(previewRect))
+        {
+            return true;
+        }
+
+        // Only the note this dropdown opened (strict origin). A bar-opened note must not hold it open.
+        if (_noteWindow is not null && _noteWindow.NoteId == _listOwnedNoteId
+            && _noteWindow.TryGetPhysicalRect(out PxRect noteRect) && CursorIn(noteRect))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
     // ------------------------------------------------------------------ actions
 
     private void ApplyAction(ShellAction action)
@@ -662,6 +739,7 @@ public sealed class ShellCoordinator : IDisposable
 
         Diag.Log($"OpenNote id={noteId} createdThisOpen={createdThisOpen} focused={focused} state={Machine.State} fgOwn={Win32.IsOwnAppWindow(Win32.GetForegroundWindow())}");
         CloseNoteWindow(); // max 1 open — opening a second flushes + replaces the first
+        _listOwnedNoteId = null; // default: not owned by the dropdown; list-origin callers claim it after this returns
 
         Note note = existingNote ?? _core.GetNote(noteId, markOpened: true);
 
@@ -703,6 +781,10 @@ public sealed class ShellCoordinator : IDisposable
         if (sender is NoteWindow win && ReferenceEquals(win, _noteWindow))
         {
             _noteWindow = null;
+            if (_listOwnedNoteId == e.NoteId)
+            {
+                _listOwnedNoteId = null; // the dropdown's owned note is gone — nothing left to hold the list open
+            }
         }
 
         Machine.EditorDeactivated(
@@ -1331,6 +1413,8 @@ public sealed class ShellCoordinator : IDisposable
     private void CloseList()
     {
         _listOpenedByHover = false; // never leave a stale keep-open flag behind (the corridor dies with the list)
+        _listOwnedNoteId = null;    // the tree's owned note no longer has a list to belong to
+        _listLeaveGraceUtc = null;
         if (_openListAnchorTag is null)
         {
             return;
@@ -1364,12 +1448,14 @@ public sealed class ShellCoordinator : IDisposable
         Note created = _core.CreateNote(groupId, "");
         RefreshViews();
         OpenNote(created.Id, created, createdThisOpen: true, anchorRect, anchorIsHorizontalBarItem: false, focused: true);
+        _listOwnedNoteId = created.Id; // spawned from this dropdown: it keeps the dropdown open while the cursor is on it
     }
 
     private void OnListNoteClicked(long noteId, PxRect anchorRect)
     {
         OnCursorEnteredApp(); // inside the app: cancel any in-flight fade now, not on the next poll
         OpenNote(noteId, existingNote: null, createdThisOpen: false, anchorRect, anchorIsHorizontalBarItem: false, focused: false);
+        _listOwnedNoteId = noteId; // spawned from this dropdown: it keeps the dropdown open while the cursor is on it
     }
 
     private void OnListGroupRowActivated(long groupId)
@@ -1483,6 +1569,7 @@ public sealed class ShellCoordinator : IDisposable
     {
         OnCursorEnteredApp(); // inside the app: cancel any in-flight fade now, not on the next poll
         OpenNote(noteId, existingNote: null, createdThisOpen: false, anchor, anchorIsHorizontalBarItem: false, focused: false);
+        _listOwnedNoteId = noteId; // spawned from the side preview (part of the Groups ▾ tree)
         // ISSUE-2: the side list STAYS open on purpose. HideGroupPreview() here made the cursor (still on
         // the row) instantly outside every surface, and the tick then closed the fresh note along with the
         // group list. The normal row+list leave grace (~200ms) hides the side list once the cursor moves.

@@ -162,6 +162,9 @@ public partial class GroupListWindow : Window
     /// <summary>F4: resolve a note body for the read-only hover preview (must use markOpened:false).</summary>
     public Func<long, string?>? PreviewResolver { get; set; }
 
+    /// <summary>True while an inline Rename / New-Group edit is active in the list (used to suppress cursor-leave close).</summary>
+    public bool IsEditing => _editing;
+
     // F4: one non-activating ToolTip per note row, closed when the list re-renders or hides.
     private readonly List<(Button Row, TextBlock Text)> _tips = new();
 

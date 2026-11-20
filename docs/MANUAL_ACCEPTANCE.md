@@ -115,6 +115,15 @@ Record the result (and the Windows build) next to each item.
 - [ ] Quick note has a × close button (top right): discards, same as Esc.
 - [ ] Quick note still closes on click-outside (cursor leaves all app surfaces) and commits if non-empty.
 
+## Dropdown close-on-leave + side-list hover preview (bug-fix batch)
+- [ ] **Dropdown closes on cursor-leave (not on bar-parking):** open any dropdown (All notes ▾ / Groups ▾ / a group chip), then move the cursor onto a DIFFERENT part of the bar or an unrelated open note — the dropdown closes after ~200 ms while the bar/note stay put. It no longer stays open just because the cursor is on the bar.
+- [ ] **Chip + corridor keep it open:** with a dropdown open, rest the cursor on its anchor chip (or cross the chip→list gap) — the dropdown stays open. A click-anchored dropdown now also closes on leave (a click no longer pins it against cursor-leave).
+- [ ] **List-owned note keeps it open (strict origin):** click a note row in the dropdown → the note opens; move the cursor from the list onto THAT note — the dropdown stays open. But a note opened from the BAR (not the dropdown) does NOT hold the dropdown open (move onto it → the dropdown closes).
+- [ ] **All-groups tree:** move from the Groups ▾ dropdown into its side list, or onto a note opened from the side list — the whole tree stays open; leaving all of it closes the dropdown after ~200 ms.
+- [ ] **No yank during edits/menus:** start an inline Rename / New Group in the list and move the mouse off the list (>200 ms) — the edit is NOT interrupted (it keeps focus). Right-click a row (context menu open) and move onto the menu — the dropdown stays open under it; it closes only once the menu dismisses and the cursor is still outside.
+- [ ] **Independent of the bar fade:** closing the dropdown this way never starts the bar's 2 s fade; and moving off everything (bar included) still runs the normal fade + close.
+- [ ] **Side-list hover preview (Bug 2):** hover a note row inside the `Groups ▾` SIDE LIST — the same read-only body bubble as the main list rows appears (same delay, bottom-placed, ~200-char truncation, `(empty note)` for empty); it never steals focus and does not reorder Recents. Moving away dismisses it; re-showing the side list for another group leaves no stale bubble.
+
 ## F2 - Explicit note titles (v0.2.0)
 - [ ] `+` → type a title in the title row → Enter (focus moves to the body) → type body → close → reopen: the chip, group rows, side list, append picker, and note header show the title.
 - [ ] Clear the title (empty the row, leave the note): the chip falls back to the first body line (or `New note` for an empty body).

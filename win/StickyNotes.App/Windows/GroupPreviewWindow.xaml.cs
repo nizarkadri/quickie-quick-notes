@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
 using System.Windows.Media;
 using StickyNotes.App.Core;
@@ -21,8 +22,14 @@ public partial class GroupPreviewWindow : Window
 {
     private readonly ScreenPositioner _positioner = new();
 
+    // F4: one non-activating ToolTip per note row, closed when the side list re-renders or hides.
+    private readonly List<(Button Row, TextBlock Text)> _tips = new();
+
     /// <summary>A note row was clicked — coordinator opens the note (same path as a group-list note row).</summary>
     public event Action<long, PxRect>? NoteClicked;
+
+    /// <summary>F4: resolve a note body for the read-only hover preview (must use markOpened:false).</summary>
+    public Func<long, string?>? PreviewResolver { get; set; }
 
     /// <summary>The pointer entered/left THIS window (coordinator uses it to keep the side list open).</summary>
     public event EventHandler<bool>? PointerEnteredLeft;
@@ -56,6 +63,7 @@ public partial class GroupPreviewWindow : Window
 
         ShownForGroupId = group.Id;
         GroupTitle.Text = group.Name;
+        CloseTips(); // a stale bubble must not outlive the rows it described
         RowsPanel.Children.Clear();
         foreach (NoteSummary note in notes.OrderByDescending(n => n.LastOpenedAtMs))
         {
@@ -85,6 +93,7 @@ public partial class GroupPreviewWindow : Window
         }
 
         ShownForGroupId = null;
+        CloseTips(); // dismiss any live row bubble before the window disappears
         Visibility = Visibility.Hidden;
     }
 
@@ -130,7 +139,62 @@ public partial class GroupPreviewWindow : Window
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
         row.Content = label;
+        AttachNotePreview(row, note.Id);
         return row;
+    }
+
+    /// <summary>
+    /// F4: read-only hover preview for a side-list note row — identical to the main list rows. Fetched on
+    /// ToolTipOpening with markOpened:false, so hovering never reorders recents or marks the note opened.
+    /// </summary>
+    private void AttachNotePreview(Button row, long noteId)
+    {
+        // WPF forbids attaching a ToolTip with StaysOpen=false to an element, so the bubble is
+        // shown as ToolTipService content; its default lifetime already dismisses on mouse-away.
+        TextBlock text = NotePreview.CreateContent();
+        ToolTipService.SetToolTip(row, text);
+        ToolTipService.SetPlacement(row, PlacementMode.Bottom);
+        ToolTipService.SetVerticalOffset(row, NotePreview.VerticalOffset);
+        ToolTipService.SetInitialShowDelay(row, NotePreview.InitialShowDelayMs);
+        _tips.Add((row, text));
+
+        // A manual CloseTips() clears the tooltip; re-arm it on the next hover.
+        row.MouseEnter += (_, _) => ToolTipService.SetToolTip(row, text);
+
+        row.ToolTipOpening += (_, e) =>
+        {
+            string? body;
+            try
+            {
+                body = PreviewResolver?.Invoke(noteId);
+            }
+            catch (StickyCoreException)
+            {
+                body = null;
+            }
+            catch (ObjectDisposedException)
+            {
+                body = null; // shutdown raced a hover
+            }
+
+            if (body is null)
+            {
+                e.Handled = true;
+                return;
+            }
+
+            text.Text = NotePreview.Format(body);
+        };
+    }
+
+    private void CloseTips()
+    {
+        foreach ((Button row, _) in _tips)
+        {
+            ToolTipService.SetToolTip(row, null); // re-armed by the row's MouseEnter handler
+        }
+
+        _tips.Clear();
     }
 
     private PxRect RectOf(FrameworkElement element)
