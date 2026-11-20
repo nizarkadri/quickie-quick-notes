@@ -10,12 +10,17 @@ Built with a **Rust core** (SQLite + FFI) and a **C# WPF** UI — no Electron, n
 
 ## Features
 
-- **Auto-hide trigger** — a subtle 100×4 notch at the top-centre of each monitor; hover ~180 ms to reveal the bar
+- **Auto-hide trigger** — a subtle 200×3 pill at the top-centre of each monitor with a 200×4 hit target (2× the old width, same height); hover ~180 ms to reveal the bar
 - **Pinned rail + Groups ▾ + Recents** — pin notes and groups, browse all groups, jump to recent notes
 - **Group lists** — click a group to open its vertical list with `+ New Note` at the top
 - **Quick capture (`+`)** — save standalone, into a group, or **append** to an existing note; `Ctrl+Enter` / click-outside commits, `Esc` discards
 - **Floating note windows** — click a note to open it beside the list; 350 ms autosave; click-outside gives a 5 s grace period (handy for copy/paste)
 - **Inline group management** — create, rename, pin/unpin, delete with an inline confirm (no modal dialogs)
+- **Explicit note titles** — an optional title row above the body; chips, rows, and menus show `title ?? first line`
+- **Hover previews** — hover a chip or list row to read the note without opening it
+- **Hover group peeks** — hover a group row in `Groups ▾` for a side list of its notes
+- **All notes ▾** — every unpinned note, sorted by date or A→Z
+- **Move notes between groups** — from the note header, or create a new group on the spot
 - **Multi-monitor & DPI aware** — PerMonitorV2, correct placement across mixed DPI and negative-coordinate monitors
 - **Tray app** — no taskbar or Alt+Tab entries; tray icon → Exit
 - **Single instance** — launching a second copy exits cleanly
@@ -63,7 +68,7 @@ Data lives in `%LOCALAPPDATA%\StickyNotes\sticky.db` (SQLite). Delete it to rese
 # Build everything (Rust core + C# UI) and stage the native dll
 powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1
 
-# Run all automated tests (54 Rust + 77 C# = 131)
+# Run all automated tests (81 Rust + 221 C# = 302)
 powershell -ExecutionPolicy Bypass -File .\scripts\test.ps1
 
 # Build a distributable ZIP -> dist\StickyNotes-<version>-win-x64.zip
@@ -87,9 +92,9 @@ scripts/                build / test / package / gate
 docs/                   manual acceptance checklist
 ```
 
-- **Boundary:** hand-written `extern "C"` ABI + UTF-8 JSON DTOs (16 functions)
+- **Boundary:** hand-written `extern "C"` ABI + UTF-8 JSON DTOs (19 functions)
 - **Idle cost:** 0% CPU when hidden (no active timers), < 50 MB working set
-- **Tests:** 261 automated (62 Rust + 199 C#); focus/window behaviour is covered by the manual checklist
+- **Tests:** 302 automated (81 Rust + 221 C#); focus/window behaviour is covered by the manual checklist
 
 ---
 
@@ -97,12 +102,13 @@ docs/                   manual acceptance checklist
 
 **v1.0** (this release) — everything above.
 
-**v0.2.0** — planned; see [`docs/ROADMAP-v0.2.0.md`](docs/ROADMAP-v0.2.0.md) for the full spec:
+**v0.2.0** — implemented (manual sign-off pending); see [`docs/ROADMAP-v0.2.0.md`](docs/ROADMAP-v0.2.0.md):
 - Move an existing note into a new/existing group
-- Explicit note titles
-- Larger hover target (test-safe approach)
+- Explicit note titles (optional, ≤64 chars; `title ?? first line`)
+- Larger hover target — 200×4 hit strip (2× width, same 4 DIP height)
 - Hover a note to preview it
-- Hover a group to open its list (revisits the click-to-open design)
+- Hover a group row in `Groups ▾` for a side list
+- All notes ▾ — every unpinned note, Date/A→Z
 
 **Out of scope:** active-window detection / context-aware bar, app-directory mapping, macOS UI, cloud sync, search UI.
 
@@ -112,6 +118,7 @@ docs/                   manual acceptance checklist
 
 - Fullscreen suppression uses `SHQueryUserNotificationState` + a caption-less-borderless heuristic; some windowed video with a caption may not suppress the bar.
 - `AttachThreadInput` is blocked by UIPI against elevated windows — click inside an editor to activate it there.
+- The 200×4 trigger strip swallows clicks in that thin top-centre band (same height as the old 100×4 notch, twice as wide).
 - Windows only.
 - Binaries are unsigned — SmartScreen may warn on first run (More info → Run anyway).
 

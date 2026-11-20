@@ -31,8 +31,6 @@ public partial class TriggerWindow : Window
 
         MouseEnter += OnMouseEnter;
         MouseLeave += OnMouseLeave;
-        Pill.MouseEnter += (_, _) => Pill.Background = (Brush)Application.Current.Resources["PillHover"];
-        Pill.MouseLeave += (_, _) => Pill.Background = (Brush)Application.Current.Resources["PillIdle"];
     }
 
     /// <summary>HMONITOR of the monitor this trigger lives on (supplied by the enumerator — never re-derived).</summary>
@@ -83,7 +81,7 @@ public partial class TriggerWindow : Window
         }
 
         double dpi = Win32.DpiScaleOf(_hMonitor) ?? VisualTreeHelper.GetDpi(this).DpiScaleX;
-        PxRect rect = _positioner.GetTriggerRect(_bounds, dpi);
+        PxRect rect = _positioner.GetTriggerHitRect(_bounds, dpi);
         _ = Win32.SetWindowPos(hwnd, Win32.HWND_TOPMOST, rect.X, rect.Y, rect.Width, rect.Height,
             Win32.SWP_NOACTIVATE | Win32.SWP_SHOWWINDOW);
     }
@@ -107,11 +105,18 @@ public partial class TriggerWindow : Window
         return true;
     }
 
-    private void OnMouseEnter(object sender, MouseEventArgs e) =>
+    private void OnMouseEnter(object sender, MouseEventArgs e)
+    {
+        // F3: feedback anywhere in the 200 DIP strip, not just on the visible pill.
+        Pill.Background = (Brush)Application.Current.Resources["PillHover"];
         TriggerEntered?.Invoke(this, new TriggerMonitorEventArgs(HMonitor));
+    }
 
-    private void OnMouseLeave(object sender, MouseEventArgs e) =>
+    private void OnMouseLeave(object sender, MouseEventArgs e)
+    {
+        Pill.Background = (Brush)Application.Current.Resources["PillIdle"];
         TriggerLeft?.Invoke(this, new TriggerMonitorEventArgs(HMonitor));
+    }
 
     protected override void OnClosed(EventArgs e)
     {

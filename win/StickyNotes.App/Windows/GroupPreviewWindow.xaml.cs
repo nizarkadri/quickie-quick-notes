@@ -123,7 +123,7 @@ public partial class GroupPreviewWindow : Window
 
         var label = new TextBlock
         {
-            Text = string.IsNullOrWhiteSpace(note.TitlePreview) ? "(empty note)" : note.TitlePreview,
+            Text = string.IsNullOrWhiteSpace(note.DisplayTitle) ? "(empty note)" : note.DisplayTitle,
             Foreground = Application.Current?.Resources["TextPrimary"] as Brush ?? System.Windows.Media.Brushes.White,
             FontSize = 12,
             VerticalAlignment = VerticalAlignment.Center,

@@ -19,6 +19,7 @@
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />   <!-- header / delete-confirm -->
+                <RowDefinition Height="Auto" />   <!-- F2: explicit title -->
                 <RowDefinition Height="Auto" />   <!-- F1: inline new-group row -->
                 <RowDefinition Height="*" />      <!-- body -->
             </Grid.RowDefinitions>
@@ -115,8 +116,32 @@
                         Click="OnConfirmCancelClick" />
             </Grid>
 
+            <!-- F2: explicit title (optional). Empty = the derived body preview is shown. -->
+            <Grid x:Name="TitlePanel" Grid.Row="1" Height="30" Margin="8,2,8,0">
+                <TextBox x:Name="TitleBox"
+                         MaxLength="64"
+                         FontSize="14"
+                         Foreground="{StaticResource TextPrimary}"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         CaretBrush="{StaticResource TextPrimary}"
+                         Padding="0,2"
+                         VerticalContentAlignment="Center"
+                         TextChanged="OnTitleTextChanged"
+                         KeyDown="OnTitleKeyDown"
+                         GotFocus="OnTitleGotFocus"
+                         LostFocus="OnTitleLostFocus" />
+                <TextBlock x:Name="TitlePlaceholder"
+                           Text="Add a title…"
+                           Foreground="#80FFFFFF"
+                           FontSize="14"
+                           IsHitTestVisible="False"
+                           VerticalAlignment="Center"
+                           Margin="2,0,0,0" />
+            </Grid>
+
             <!-- F1: inline new-group row — shown when "＋ New group…" is picked from the move menu. -->
-            <Grid x:Name="NewGroupPanel" Grid.Row="1" Height="32" Margin="6,0,6,2" Visibility="Collapsed">
+            <Grid x:Name="NewGroupPanel" Grid.Row="2" Height="32" Margin="6,0,6,2" Visibility="Collapsed">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
@@ -159,7 +184,7 @@
             </Grid>
 
             <TextBox x:Name="BodyBox"
-                     Grid.Row="2"
+                     Grid.Row="3"
                      AcceptsReturn="True"
                      AcceptsTab="False"
                      TextWrapping="Wrap"

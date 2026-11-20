@@ -16,10 +16,11 @@ const BUSY_TIMEOUT_MS: u64 = 5000;
 
 /// Column order expected by [`note_from_row`].
 pub const NOTE_COLUMNS: &str =
-    "id, group_id, body, is_pinned, pinned_at_ms, created_at_ms, updated_at_ms, last_opened_at_ms";
+    "id, group_id, body, is_pinned, pinned_at_ms, created_at_ms, updated_at_ms, last_opened_at_ms, title";
 
 /// Column order expected by [`summary_from_row`].
-pub const SUMMARY_COLUMNS: &str = "id, group_id, body, is_pinned, pinned_at_ms, last_opened_at_ms";
+pub const SUMMARY_COLUMNS: &str =
+    "id, group_id, body, is_pinned, pinned_at_ms, last_opened_at_ms, title";
 
 /// Column order expected by [`group_from_row`].
 pub const GROUP_COLUMNS: &str = "id, name, is_pinned, pinned_at_ms, created_at_ms, \
@@ -59,6 +60,7 @@ CREATE INDEX idx_notes_group_opened ON notes(group_id, last_opened_at_ms DESC, i
 "#;
 
 /// `(version, sql)` steps applied in ascending order. `context_rules` is v2 — do NOT add here.
+/// Additive columns are applied by [`ensure_additive_columns`] instead, without bumping `user_version`.
 const MIGRATIONS: &[(i32, &str)] = &[(1, V1_SQL)];
 
 /// Open the database, apply PRAGMAs and run pending migrations.
@@ -74,6 +76,7 @@ pub fn open(path: &Path) -> Result<Connection, CoreError> {
     )?;
 
     migrate(&conn)?;
+    ensure_additive_columns(&conn)?;
     Ok(conn)
 }
 
@@ -113,6 +116,23 @@ fn apply_migration(conn: &Connection, version: i32, sql: &str) -> Result<(), Cor
     }
 }
 
+/// Additive columns that are applied idempotently without bumping `user_version`.
+/// See `docs/adr/0001-additive-columns-without-version-bump.md`.
+fn ensure_additive_columns(conn: &Connection) -> Result<(), CoreError> {
+    if !has_column(conn, "notes", "title")? {
+        conn.execute_batch("ALTER TABLE notes ADD COLUMN title TEXT NULL;")?;
+    }
+    Ok(())
+}
+
+fn has_column(conn: &Connection, table: &str, column: &str) -> Result<bool, CoreError> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let names = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(names.iter().any(|name| name == column))
+}
+
 // ---------------------------------------------------------------------------
 // Row mapping — column order is fixed by the `*_COLUMNS` constants above.
 // ---------------------------------------------------------------------------
@@ -123,6 +143,7 @@ pub fn note_from_row(row: &Row<'_>) -> rusqlite::Result<Note> {
         id: row.get(0)?,
         group_id: row.get(1)?,
         title_preview: title_preview(&body),
+        title: row.get(8)?,
         body,
         is_pinned: row.get::<_, i64>(3)? != 0,
         pinned_at_ms: row.get(4)?,
@@ -134,11 +155,14 @@ pub fn note_from_row(row: &Row<'_>) -> rusqlite::Result<Note> {
 
 pub fn summary_from_row(row: &Row<'_>) -> rusqlite::Result<NoteSummary> {
     let body: String = row.get(2)?;
+    let title: Option<String> = row.get(6)?;
+    let has_title = title.as_deref().is_some_and(|t| !t.trim().is_empty());
     Ok(NoteSummary {
         id: row.get(0)?,
         group_id: row.get(1)?,
         title_preview: title_preview(&body),
-        is_empty: body.trim().is_empty(),
+        title,
+        is_empty: body.trim().is_empty() && !has_title,
         is_pinned: row.get::<_, i64>(3)? != 0,
         pinned_at_ms: row.get(4)?,
         last_opened_at_ms: row.get(5)?,

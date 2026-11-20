@@ -114,3 +114,29 @@ Record the result (and the Windows build) next to each item.
 - [ ] Quick note no longer closes when it merely loses the OS foreground while the user keeps typing in it (focus still inside the window).
 - [ ] Quick note has a × close button (top right): discards, same as Esc.
 - [ ] Quick note still closes on click-outside (cursor leaves all app surfaces) and commits if non-empty.
+
+## F2 - Explicit note titles (v0.2.0)
+- [ ] `+` → type a title in the title row → Enter (focus moves to the body) → type body → close → reopen: the chip, group rows, side list, append picker, and note header show the title.
+- [ ] Clear the title (empty the row, leave the note): the chip falls back to the first body line (or `New note` for an empty body).
+- [ ] Title `Zebra` with body starting `apple`: the chip says `Zebra`; **All notes ▾ → A→Z** sorts it under Z.
+- [ ] Create a note with only a title and no body, close it: the note is **kept** (not deleted).
+- [ ] Create a note with no title and no body, close it: the note is **deleted**.
+- [ ] Delete an empty-body note that has a title: the inline confirm appears (not an instant delete).
+- [ ] Long title (100 chars): it is capped at 64; the chip ellipsizes and the bar layout does not break.
+- [ ] Paste a multi-line string into the title: it becomes one line.
+- [ ] Esc in the title row reverts the title and returns focus to the body; Esc in the body still closes + flushes.
+- [ ] Old DB: open the app with an existing `%LOCALAPPDATA%\StickyNotes\sticky.db`; notes still work, titles are empty, and `PRAGMA user_version` remains 1.
+- [ ] Restart: titles persist.
+
+## F3 - Wider hover target (v0.2.0)
+- [ ] Hover ~50 DIPs left or right of the visible 200×3 pill (still inside the 200×4 strip): the bar opens after ~180 ms.
+- [ ] Hover ~110 DIPs left of the pill (outside the 200 DIP strip): the bar does not open.
+- [ ] Fast cursor sweep across the 200 DIP strip: the bar does not open.
+- [ ] The visible pill is 200 DIPs wide and 3 DIPs tall, centered; no layout jump when the bar opens.
+- [ ] Multi-monitor: each monitor's top-centre strip triggers its own bar; negative-coordinate monitors work.
+- [ ] Fullscreen video/game: no trigger.
+- [ ] Change display scale/resolution while the bar is open: the bar is not covered by the rebuilt trigger (its chips remain clickable).
+- [ ] Idle for 60 s: Task Manager still shows 0.0% CPU and < 50 MB working set.
+
+## v0.2.0 F2/F3 - final gate (pending manual sign-off)
+- [ ] `scripts\build.ps1` then `scripts\test.ps1`: all green (81 Rust + 221 C# = 302). **(automated run pending final)**

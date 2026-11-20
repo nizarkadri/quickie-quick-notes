@@ -6,16 +6,17 @@
         ShowInTaskbar="False"
         ShowActivated="False"
         Topmost="True"
-        Width="100"
+        Width="200"
         Height="4"
         Background="Transparent"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True">
-    <!-- 100x4 DIP notch at the top-center of its monitor; holds a 100x3 DIP pill. -->
+    <!-- 200x4 DIP hit window at the top-center of its monitor; holds a 200x3 DIP pill. -->
     <Border x:Name="Pill"
-            Width="100"
+            Width="200"
             Height="3"
             CornerRadius="1.5"
+            HorizontalAlignment="Center"
             VerticalAlignment="Top"
             Background="#38888888" />
 </Window>

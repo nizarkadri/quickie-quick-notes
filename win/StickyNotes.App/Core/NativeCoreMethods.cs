@@ -73,6 +73,12 @@ internal static class NativeCoreMethods
         [MarshalAs(UnmanagedType.LPUTF8Str)] string bodyUtf8);
 
     [DllImport(Dll, CallingConvention = Cdecl)]
+    internal static extern FfiResult sn_set_note_title(
+        IntPtr handle,
+        long noteId,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string? titleUtf8);
+
+    [DllImport(Dll, CallingConvention = Cdecl)]
     internal static extern FfiResult sn_delete_note(IntPtr handle, long noteId);
 
     [DllImport(Dll, CallingConvention = Cdecl)]

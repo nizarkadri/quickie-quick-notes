@@ -177,7 +177,7 @@ public partial class QuickNoteWindow : Window
         {
             long id = n.Id;
             bool selected = _session.Target.Mode == QuickCaptureTarget.AppendMode && _session.Target.NoteId == id;
-            var item = new MenuItem { Header = (selected ? "✓ " : "") + n.TitlePreview };
+            var item = new MenuItem { Header = (selected ? "✓ " : "") + n.DisplayTitle };
             item.Click += (_, _) =>
             {
                 _menuPicked = true;

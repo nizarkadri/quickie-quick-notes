@@ -157,8 +157,13 @@ impl StickyCore {
                 notes.sort_by_cached_key(|n| (Reverse(n.last_opened_at_ms), Reverse(n.id)))
             }
             NoteSort::Alphabetical => notes.sort_by_cached_key(|n| {
+                let title = n
+                    .title
+                    .as_deref()
+                    .filter(|t| !t.trim().is_empty())
+                    .unwrap_or(n.title_preview.as_str());
                 (
-                    n.title_preview.to_lowercase(),
+                    title.to_lowercase(),
                     Reverse(n.last_opened_at_ms),
                     Reverse(n.id),
                 )
@@ -204,6 +209,22 @@ impl StickyCore {
             return Err(not_found_note(note_id));
         }
         fetch_summary(&conn, note_id)
+    }
+
+    /// Sets (or clears) the user-facing title. The body and derived `title_preview` are untouched.
+    /// Empty/whitespace normalizes to `None`; values are trimmed, collapsed, and capped at
+    /// [`crate::models::TITLE_MAX_CHARS`] characters.
+    pub fn set_note_title(&self, note_id: i64, title: Option<&str>) -> Result<Note, CoreError> {
+        let conn = self.lock()?;
+        let title = title.map(normalize_title).filter(|t| !t.is_empty());
+        let updated = conn.execute(
+            "UPDATE notes SET title = ?2, updated_at_ms = ?3 WHERE id = ?1",
+            params![note_id, title, now_ms()],
+        )?;
+        if updated == 0 {
+            return Err(not_found_note(note_id));
+        }
+        fetch_note(&conn, note_id)
     }
 
     pub fn delete_note(&self, note_id: i64) -> Result<(), CoreError> {
@@ -355,6 +376,16 @@ fn validated_name(name: &str) -> Result<String, CoreError> {
         return Err(CoreError::Validation("group name must not be blank".to_string()));
     }
     Ok(trimmed.to_string())
+}
+
+/// Trim, collapse every whitespace run (including newlines from a paste) to one space, and cap.
+fn normalize_title(raw: &str) -> String {
+    raw.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(crate::models::TITLE_MAX_CHARS)
+        .collect()
 }
 
 fn not_found_note(note_id: i64) -> CoreError {

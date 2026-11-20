@@ -26,6 +26,12 @@ public sealed record Note
     [JsonPropertyName("title_preview")]
     public string TitlePreview { get; init; } = "";
 
+    [JsonPropertyName("title")]
+    public string? Title { get; init; }
+
+    /// <summary>Label shown wherever the note is named: Title when present, else TitlePreview.</summary>
+    public string DisplayTitle => string.IsNullOrWhiteSpace(Title) ? TitlePreview : Title;
+
     [JsonPropertyName("is_pinned")]
     public bool IsPinned { get; init; }
 
@@ -52,6 +58,12 @@ public sealed record NoteSummary
 
     [JsonPropertyName("title_preview")]
     public string TitlePreview { get; init; } = "";
+
+    [JsonPropertyName("title")]
+    public string? Title { get; init; }
+
+    /// <summary>Label shown wherever the note is named: Title when present, else TitlePreview.</summary>
+    public string DisplayTitle => string.IsNullOrWhiteSpace(Title) ? TitlePreview : Title;
 
     /// <summary>Used by the UI to decide whether delete needs confirmation.</summary>
     [JsonPropertyName("is_empty")]
@@ -258,6 +270,7 @@ public interface IStickyCoreClient : IDisposable
     Note GetNote(long noteId, bool markOpened);
     Note CreateNote(long? groupId, string body = "");
     NoteSummary UpdateNoteBody(long noteId, string body);
+    Note SetNoteTitle(long noteId, string? title);
     void DeleteNote(long noteId);
     NoteSummary SetNotePinned(long noteId, bool pinned);
     Note SetNoteGroup(long noteId, long? groupId);

@@ -25,6 +25,8 @@ public sealed class NoteEditSession
 
     private string _savedBody;
     private string _body;
+    private string _savedTitle;
+    private string _title;
     private int _debounceElapsed;
 
     public NoteEditSession(IStickyCoreClient core, Note note, bool createdThisOpen)
@@ -34,16 +36,24 @@ public sealed class NoteEditSession
         _createdThisOpen = createdThisOpen;
         _savedBody = note.Body ?? string.Empty;
         _body = _savedBody;
+        _savedTitle = note.Title ?? string.Empty;
+        _title = _savedTitle;
         _debounceElapsed = 0;
     }
 
     public long NoteId => _note.Id;
 
-    /// <summary>Whether the in-memory body differs from the last persisted body.</summary>
-    public bool IsDirty => _body != _savedBody;
+    /// <summary>Whether the in-memory body or title differs from the last persisted values.</summary>
+    public bool IsDirty => _body != _savedBody || _title != _savedTitle;
 
     /// <summary>Current (possibly unsaved) body text.</summary>
     public string CurrentText => _body;
+
+    /// <summary>Current (possibly unsaved) title; empty means "no title".</summary>
+    public string CurrentTitle => _title;
+
+    /// <summary>Last persisted title; empty means "no title".</summary>
+    public string SavedTitle => _savedTitle;
 
     /// <summary>Record a keystroke; restarts the trailing debounce.</summary>
     public void TextChanged(string body)
@@ -57,6 +67,22 @@ public sealed class NoteEditSession
         _body = body;
         _debounceElapsed = 0;
     }
+
+    /// <summary>Record a title edit; restarts the trailing debounce.</summary>
+    public void TitleChanged(string? title)
+    {
+        var normalized = title ?? string.Empty;
+        if (normalized == _title)
+        {
+            return;
+        }
+
+        _title = normalized;
+        _debounceElapsed = 0;
+    }
+
+    /// <summary>Discard an unsaved title edit; the body debounce is untouched.</summary>
+    public void RevertTitle() => _title = _savedTitle;
 
     /// <summary>Advance the virtual/debounce clock (windows call with elapsed ms).</summary>
     public void Advance(int ms)
@@ -93,7 +119,9 @@ public sealed class NoteEditSession
     {
         bool saved = FlushIfDirty();
 
-        if (_createdThisOpen && string.IsNullOrWhiteSpace(_savedBody))
+        if (_createdThisOpen
+            && string.IsNullOrWhiteSpace(_savedBody)
+            && string.IsNullOrWhiteSpace(_savedTitle))
         {
             bool pinned = false;
             try
@@ -137,8 +165,18 @@ public sealed class NoteEditSession
 
     private void SaveNow()
     {
-        _core.UpdateNoteBody(_note.Id, _body);
-        _savedBody = _body;
+        if (_body != _savedBody)
+        {
+            _core.UpdateNoteBody(_note.Id, _body);
+            _savedBody = _body;
+        }
+
+        if (_title != _savedTitle)
+        {
+            var updated = _core.SetNoteTitle(_note.Id, _title);
+            _savedTitle = updated.Title ?? string.Empty;
+        }
+
         _debounceElapsed = 0;
     }
 }

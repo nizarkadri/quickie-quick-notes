@@ -108,7 +108,7 @@ public partial class BarWindow : Window
             }
             else if (item.Note is not null)
             {
-                PinnedPanel.Children.Add(BuildChip("note:" + item.Note.Id, item.Note.TitlePreview, strikePinned: true));
+                PinnedPanel.Children.Add(BuildChip("note:" + item.Note.Id, item.Note.DisplayTitle, strikePinned: true));
             }
         }
 
@@ -122,7 +122,7 @@ public partial class BarWindow : Window
                 continue; // standalone pinned notes already live in the rail — never duplicate
             }
 
-            RecentPanel.Children.Add(BuildChip("note:" + note.Id, note.TitlePreview, strikePinned: false));
+            RecentPanel.Children.Add(BuildChip("note:" + note.Id, note.DisplayTitle, strikePinned: false));
         }
 
         // The recents only ever show five, so a note that falls out of the rail and off the recents is
@@ -366,6 +366,22 @@ public partial class BarWindow : Window
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
         };
         transform.BeginAnimation(TranslateTransform.YProperty, slide);
+    }
+
+    /// <summary>F3: raise the bar above rebuilt trigger windows without replaying the reveal.</summary>
+    public void BringToFront()
+    {
+        if (Visibility != Visibility.Visible)
+        {
+            return;
+        }
+
+        nint hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd != nint.Zero)
+        {
+            _ = Win32.SetWindowPos(hwnd, Win32.HWND_TOPMOST, 0, 0, 0, 0,
+                Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE);
+        }
     }
 
     /// <summary>v0.2.2: set the bar content opacity (0..1) — used by the 2s linear exit fade.</summary>

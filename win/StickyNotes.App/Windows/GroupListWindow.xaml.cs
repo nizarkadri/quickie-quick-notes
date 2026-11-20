@@ -376,7 +376,7 @@ public partial class GroupListWindow : Window
 
         var text = new TextBlock
         {
-            Text = note.TitlePreview,
+            Text = note.DisplayTitle,
             Foreground = (Brush)Application.Current.Resources["TextPrimary"],
             FontSize = 12,
             VerticalAlignment = VerticalAlignment.Center,

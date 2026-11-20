@@ -38,6 +38,9 @@ public interface IScreenPositioner
 {
     PxRect GetTriggerRect(MonitorBounds monitor, double dpi);
 
+    /// <summary>F3: wider hit target used by the trigger window; the visible rect stays 100×4.</summary>
+    PxRect GetTriggerHitRect(MonitorBounds monitor, double dpi);
+
     PxRect GetBarRect(MonitorBounds monitor, double dpi);
 
     PxRect GetGroupListRect(PxRect anchor, PxSize size, MonitorBounds monitor);
@@ -60,6 +63,9 @@ public sealed class ScreenPositioner : IScreenPositioner
 
     public const int TriggerDipWidth = 100;
     public const int TriggerDipHeight = 4;
+    /// <summary>F3: 2× the visible width, same 4 DIP height — thin and wide.</summary>
+    public const int TriggerHitDipWidth = 200;
+    public const int TriggerHitDipHeight = 4;
     public const int BarDipHeight = 44;
     public const int BarDipMaxWidth = 1100;
     public const double BarMaxWorkWidthFraction = 0.92;
@@ -69,6 +75,20 @@ public sealed class ScreenPositioner : IScreenPositioner
         PxRect wa = monitor.WorkArea;
         int w = (int)Math.Round(TriggerDipWidth * dpi);
         int h = (int)Math.Round(TriggerDipHeight * dpi);
+        int x = wa.Left + (wa.Width - w) / 2;
+        return new PxRect(x, wa.Top, w, h);
+    }
+
+    /// <summary>
+    /// F3: the wider (200 DIP), still-4-DIP hit target. `GetTriggerRect` stays 100×4 because
+    /// `ScreenPositionerTests` pins it; the trigger WINDOW uses this rect so `MouseEnter` fires
+    /// across the whole strip. Same math as `GetTriggerRect`, different width.
+    /// </summary>
+    public PxRect GetTriggerHitRect(MonitorBounds monitor, double dpi)
+    {
+        PxRect wa = monitor.WorkArea;
+        int w = (int)Math.Round(TriggerHitDipWidth * dpi);
+        int h = (int)Math.Round(TriggerHitDipHeight * dpi);
         int x = wa.Left + (wa.Width - w) / 2;
         return new PxRect(x, wa.Top, w, h);
     }

@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 /// Longest `title_preview` the UI shows in a chip / list row.
 pub const TITLE_PREVIEW_MAX_CHARS: usize = 28;
 
+/// Longest explicit `title` the core stores.
+pub const TITLE_MAX_CHARS: usize = 64;
+
 /// Fallback preview for an empty / whitespace-only note.
 pub const TITLE_PREVIEW_FALLBACK: &str = "New note";
 
@@ -15,6 +18,9 @@ pub struct Note {
     pub body: String,
     /// Derived: first non-empty line trimmed to <=28 chars, fallback "New note".
     pub title_preview: String,
+    /// User-set label; `None` means "use `title_preview`".
+    #[serde(default)]
+    pub title: Option<String>,
     pub is_pinned: bool,
     pub pinned_at_ms: Option<i64>,
     pub created_at_ms: i64,
@@ -27,6 +33,9 @@ pub struct NoteSummary {
     pub id: i64,
     pub group_id: Option<i64>,
     pub title_preview: String,
+    /// User-set label; `None` means "use `title_preview`".
+    #[serde(default)]
+    pub title: Option<String>,
     /// Used by the UI to decide whether delete needs confirmation.
     pub is_empty: bool,
     pub is_pinned: bool,

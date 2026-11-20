@@ -1,0 +1,3 @@
+# Additive schema columns do not bump `user_version`
+
+`notes.title` (F2) is added by an idempotent `ALTER TABLE` at `open()` rather than a `user_version` 2 migration, because `t02_schema_and_migrations.rs::open_creates_schema_version_1` pins fresh databases to `user_version = 1` and the project forbids editing tests. `V1_SQL` and `MIGRATIONS` stay untouched; `PRAGMA table_info(notes)` decides whether the column must be added. `user_version` continues to track breaking migrations only, leaving v2 reserved for `context_rules`.

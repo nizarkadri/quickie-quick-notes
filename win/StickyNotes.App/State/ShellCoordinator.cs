@@ -283,6 +283,13 @@ public sealed class ShellCoordinator : IDisposable
             _triggers.Add(trigger);
             trigger.ShowOnMonitor();
         }
+
+        // F3: rebuilt triggers are placed HWND_TOPMOST and can land above a visible bar. Raise the
+        // bar again without replaying the reveal, so the taller hit strip never covers its chips.
+        if (_bar.Visibility == Visibility.Visible)
+        {
+            _bar.BringToFront();
+        }
     }
 
     private void OnTriggerEntered(object? sender, TriggerMonitorEventArgs e)
@@ -886,7 +893,7 @@ public sealed class ShellCoordinator : IDisposable
         {
             foreach (NoteSummary candidate in candidates)
             {
-                var item = new MenuItem { Header = candidate.TitlePreview };
+                var item = new MenuItem { Header = candidate.DisplayTitle };
                 long noteId = candidate.Id;
                 item.Click += (_, _) => MoveNoteToGroup(noteId, groupId, group.Name);
                 add.Items.Add(item);
@@ -1002,7 +1009,7 @@ public sealed class ShellCoordinator : IDisposable
         }
 
         var confirm = new ContextMenu();
-        confirm.Items.Add(new MenuItem { Header = $"Delete '{Truncate(note.TitlePreview, 40)}'?", IsEnabled = false });
+        confirm.Items.Add(new MenuItem { Header = $"Delete '{Truncate(note.DisplayTitle, 40)}'?", IsEnabled = false });
 
         var yes = new MenuItem { Header = "Delete" };
         yes.Click += (_, _) =>

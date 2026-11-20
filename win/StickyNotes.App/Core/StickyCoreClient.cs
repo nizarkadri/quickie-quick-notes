@@ -82,6 +82,9 @@ public sealed class StickyCoreClient : IStickyCoreClient
     public NoteSummary UpdateNoteBody(long noteId, string body) =>
         InvokeJson<NoteSummary>(h => NativeCoreMethods.sn_update_note_body(h, noteId, body ?? ""));
 
+    public Note SetNoteTitle(long noteId, string? title) =>
+        InvokeJson<Note>(h => NativeCoreMethods.sn_set_note_title(h, noteId, title));
+
     public void DeleteNote(long noteId) =>
         InvokeUnit(h => NativeCoreMethods.sn_delete_note(h, noteId));
 

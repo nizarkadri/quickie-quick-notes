@@ -121,6 +121,15 @@ unsafe fn read_str(ptr: *const c_char) -> Result<String, CoreError> {
         .map_err(|err| CoreError::Validation(format!("invalid UTF-8: {err}")))
 }
 
+/// Borrow an optional input string; a null pointer means "absent".
+unsafe fn read_opt_str(ptr: *const c_char) -> Result<Option<String>, CoreError> {
+    if ptr.is_null() {
+        Ok(None)
+    } else {
+        read_str(ptr).map(Some)
+    }
+}
+
 unsafe fn core_ref<'a>(handle: *mut StickyCoreHandle) -> Result<&'a StickyCore, CoreError> {
     if handle.is_null() {
         return Err(CoreError::Validation("null StickyCore handle".to_string()));
@@ -317,6 +326,30 @@ pub extern "C" fn sn_update_note_body(
         };
         match core.update_note_body(note_id, &body) {
             Ok(summary) => ok_json(&summary),
+            Err(error) => err(error),
+        }
+    })
+}
+
+/// Sets or clears a note's title. `title_utf8 == NULL` clears it; the core normalizes
+/// (trim / collapse / cap 64 / empty → clear). Returns the updated `Note`.
+#[no_mangle]
+pub extern "C" fn sn_set_note_title(
+    handle: *mut StickyCoreHandle,
+    note_id: i64,
+    title_utf8: *const c_char,
+) -> FfiResult {
+    guarded(|| {
+        let core = match unsafe { core_ref(handle) } {
+            Ok(core) => core,
+            Err(error) => return err(error),
+        };
+        let title = match unsafe { read_opt_str(title_utf8) } {
+            Ok(title) => title,
+            Err(error) => return err(error),
+        };
+        match core.set_note_title(note_id, title.as_deref()) {
+            Ok(note) => ok_json(&note),
             Err(error) => err(error),
         }
     })

@@ -80,6 +80,9 @@ public partial class NoteWindow : Window
         BodyBox.Text = note.Body ?? string.Empty;
         BodyBox.CaretIndex = BodyBox.Text.Length;
 
+        TitleBox.Text = note.Title ?? string.Empty;
+        UpdateTitlePlaceholder();
+
         UpdatePinGlyph();
         UpdateGroupBadge(_groupId, _groupName);
 
@@ -381,7 +384,7 @@ public partial class NoteWindow : Window
 
     private void OnDeleteClick(object sender, RoutedEventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(BodyBox.Text))
+        if (string.IsNullOrWhiteSpace(BodyBox.Text) && string.IsNullOrWhiteSpace(TitleBox.Text))
         {
             DeleteConfirmed();
             return;
@@ -429,6 +432,49 @@ public partial class NoteWindow : Window
 
     private void OnBodyTextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e) =>
         _session.TextChanged(BodyBox.Text);
+
+    private void OnTitleTextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+    {
+        _session.TitleChanged(TitleBox.Text);
+        UpdateTitlePlaceholder();
+    }
+
+    private void UpdateTitlePlaceholder()
+    {
+        TitlePlaceholder.Visibility =
+            string.IsNullOrEmpty(TitleBox.Text) && !TitleBox.IsKeyboardFocused
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+    }
+
+    private void OnTitleGotFocus(object sender, RoutedEventArgs e) =>
+        TitlePlaceholder.Visibility = Visibility.Collapsed;
+
+    private void OnTitleLostFocus(object sender, RoutedEventArgs e) =>
+        TitlePlaceholder.Visibility = string.IsNullOrEmpty(TitleBox.Text)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+    private void OnTitleKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            // Single-line title: Enter commits and moves to the body.
+            _session.Flush();
+            BodyBox.Focus();
+            BodyBox.CaretIndex = BodyBox.Text.Length;
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            // Esc cancels the title edit; it does NOT close the note (the body's Esc still closes).
+            _session.RevertTitle();
+            TitleBox.Text = _session.CurrentTitle;
+            UpdateTitlePlaceholder();
+            BodyBox.Focus();
+            e.Handled = true;
+        }
+    }
 
     private void OnDeactivated(object? sender, EventArgs e)
     {

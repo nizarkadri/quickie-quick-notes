@@ -2,6 +2,12 @@
 
 > **Scope:** v1 only (auto-hiding top-center trigger, bookmark-style bar, pinned notes/groups, recents, group dropdowns, single side-branching note editor, central `+` quick-note capture/append). No active-window context engine, cloud sync, search UI, or macOS UI.
 
+> **v0.2.0 amendments (2026-11-19):**
+> - **Trigger:** the visible trigger is now **200×3 DIP** with a **200×4 DIP** hit target (2× width, same 4 DIP height). `ScreenPositioner.GetTriggerRect` stays **100×4** because `ScreenPositionerTests` pins it; `TriggerWindow` uses the new `GetTriggerHitRect`.
+> - **Titles:** notes have an optional explicit `title` (nullable, ≤64 chars) alongside the derived `title_preview`; every display site and the A→Z sort use `title ?? title_preview`. Added by an idempotent `ALTER TABLE` at `open()` without a `user_version` bump — see `docs/adr/0001-additive-columns-without-version-bump.md`. `NoteEditSession` tracks title edits, and a title-only new note survives close.
+> - **FFI:** 19 `extern "C"` functions (v1 had 16); `sn_set_note_group` and `sn_set_note_title` added.
+> - **All Notes ▾:** every unpinned note, Date/A→Z; A→Z keys on `title ?? title_preview`.
+
 ---
 
 ## 1. Key Decisions
@@ -11,16 +17,16 @@
 **Why & Trade-off:** Compared to WinUI 3, WPF starts faster, idles at ~35–50 MB working set, deploys without MSIX/Windows App SDK runtime friction, and exposes raw HWNDs cleanly for `WS_EX_NOACTIVATE` and `SW_SHOWNOACTIVATE`. Trade-off: you style clean modern templates manually instead of getting WinUI 3 controls out of the box.
 
 ### Rust <-> C# Boundary: Hand-Written `extern "C"` ABI + UTF-8 JSON DTOs
-**Recommendation & Default:** Do **not** use UniFFI or any code generator for C#. Keep a 100% platform-neutral `StickyCore` Rust API internally, exposed via 16 `extern "C"` functions (`cdylib` `sticky_core.dll`). Pass scalar inputs as C primitives (`i64`, `bool`, null-terminated UTF-8 `[MarshalAs(UnmanagedType.LPUTF8Str)] string`); return complex read results as a single `#[repr(C)] FfiResult { status: i32, payload: *mut c_char }` containing UTF-8 JSON (on success) or an error message (on failure), freed once in C# `finally` via `sn_string_free`. Serialize SQLite access via a single `std::sync::Mutex<rusqlite::Connection>` inside `StickyCore` (`WAL` mode).
-**Why & Trade-off:** Upstream UniFFI does not support C# in-tree, and third-party generators have strict version lockstep issues that break clean builds. With 16 functions and <3 KB JSON snapshots (<20 µs `System.Text.Json` cost), one allocation + one free function eliminates nested C-struct pointer bugs while leaving pure `StickyCore` untouched for future Swift reuse. Trade-off: DTO definitions exist in both Rust (`serde`) and C# (`record` types), kept in sync by an integration test.
+**Recommendation & Default:** Do **not** use UniFFI or any code generator for C#. Keep a 100% platform-neutral `StickyCore` Rust API internally, exposed via 19 `extern "C"` functions (`cdylib` `sticky_core.dll`). Pass scalar inputs as C primitives (`i64`, `bool`, null-terminated UTF-8 `[MarshalAs(UnmanagedType.LPUTF8Str)] string`); return complex read results as a single `#[repr(C)] FfiResult { status: i32, payload: *mut c_char }` containing UTF-8 JSON (on success) or an error message (on failure), freed once in C# `finally` via `sn_string_free`. Serialize SQLite access via a single `std::sync::Mutex<rusqlite::Connection>` inside `StickyCore` (`WAL` mode).
+**Why & Trade-off:** Upstream UniFFI does not support C# in-tree, and third-party generators have strict version lockstep issues that break clean builds. With 19 functions and <3 KB JSON snapshots (<20 µs `System.Text.Json` cost), one allocation + one free function eliminates nested C-struct pointer bugs while leaving pure `StickyCore` untouched for future Swift reuse. Trade-off: DTO definitions exist in both Rust (`serde`) and C# (`record` types), kept in sync by an integration test.
 
 ### Group Expansion: Click-to-Open, Single Open List
 **Recommendation & Default:** Expand a group on **left-click**, never hover. Allow **at most one** group dropdown open at a time; clicking another group switches immediately (saving and closing any open `NoteWindow`).
 **Why & Trade-off:** Hover-opening along a horizontal strip triggers accidental flyouts when moving diagonally from the center `+` toward pinned notes. Trade-off: browsing between two groups takes one extra click per group, in exchange for zero accidental visual churn.
 
-### Trigger & Keep-Open Geometry: Separate `100×4 DIP` Trigger Per Monitor + Inflated Surface Polling
-**Recommendation & Default:** Create one tiny borderless `TriggerWindow` (`100×4 DIPs`, centered horizontally at `rcWork.Top`) per connected monitor, rendering a subtle `100×3 DIP` pill (`#38888888`, `#80888888` on hover). Keep `BarWindow` pre-created (`Visibility.Hidden` when idle) and reveal it after a **180ms hover dwell** using `SW_SHOWNOACTIVATE` + a **140ms** GPU `TranslateTransform.Y` (`-44 -> 0`) slide. While visible, run a **50ms `GetCursorPos` timer** (stopped completely when hidden -> 0% idle CPU) checking whether the cursor lies inside any visible surface (`Trigger`, `Bar`, `GroupList`, `NoteWindow`, `QuickNote`) inflated by **`12 DIP` corridor padding**. Start a **200ms exit grace timer** when outside.
-**Why & Trade-off:** Separate `100×4` triggers never block maximized browser tabs or window `Close` buttons and avoid global mouse hooks across monitors. Polling `GetCursorPos` *only while open* avoids `WM_MOUSELEAVE` flicker across multi-HWND gaps. Trade-off: 2–3 tiny HWNDs (~150 KB total) instead of one window.
+### Trigger & Keep-Open Geometry: Separate `200×4 DIP` Trigger Per Monitor + Inflated Surface Polling
+**Recommendation & Default:** Create one tiny borderless `TriggerWindow` (`200×4 DIPs` hit target, centered horizontally at `rcWork.Top`) per connected monitor, rendering a subtle `200×3 DIP` pill (`#38888888`, `#80888888` on hover). v0.2 widened the target from `100×4` to `200×4` (2× width, same height); `GetTriggerRect` stays `100×4` for test compatibility and the window uses the new `GetTriggerHitRect`. Keep `BarWindow` pre-created (`Visibility.Hidden` when idle) and reveal it after a **180ms hover dwell** using `SW_SHOWNOACTIVATE` + a **140ms** GPU `TranslateTransform.Y` (`-44 -> 0`) slide. While visible, run a **50ms `GetCursorPos` timer** (stopped completely when hidden -> 0% idle CPU) checking whether the cursor lies inside any visible surface (`Trigger`, `Bar`, `GroupList`, `NoteWindow`, `QuickNote`) inflated by **`12 DIP` corridor padding**. Start a **200ms exit grace timer** when outside.
+**Why & Trade-off:** The `200×4` hit strip is twice as wide but the same height, so it still sits between browser tabs and window controls; it swallows clicks only in that 4 DIP strip. Separate triggers avoid global mouse hooks across monitors. Polling `GetCursorPos` *only while open* avoids `WM_MOUSELEAVE` flicker across multi-HWND gaps. Trade-off: 2–3 tiny HWNDs (~150 KB total) instead of one window.
 
 ### Focus & Activation Model
 **Recommendation & Default:**
@@ -59,7 +65,7 @@
 | **Mixed-DPI positioning drift** (e.g., 150% laptop + 100% external monitor) | Mixing Win32 physical pixels (`GetCursorPos`, `rcMonitor`) with WPF logical DIPs (`Window.Left/Top`). | Declare `PerMonitorV2` in `app.manifest`. Compute all screen placement in **physical pixels** via Win32 `SetWindowPos`, converting WPF `ActualWidth/Height` using `VisualTreeHelper.GetDpi(visual)`. |
 | **FFI memory leaks or panics crashing CLR** | Unwinding a Rust `panic!` across `extern "C"` is UB; forgetting to free strings leaks RAM. | Wrap every `extern "C"` body in `std::panic::catch_unwind`. Return exactly one `FfiResult` struct freed in a single C# helper `InvokeJson<T>` `try/finally` block. |
 | **Hover flicker across multi-window gaps** | Relying on WPF `MouseLeave` fires transiently when crossing from `BarWindow` to `GroupListWindow` or `NoteWindow`. | Ignore `MouseLeave` once open; drive visibility solely from one `HitRegionTracker` (`50ms` `GetCursorPos` check against `12 DIP`-inflated rects + `200ms` exit delay). |
-| **Note Title UX friction** | Requiring a separate title field slows quick capture; having none makes bar chips unreadable. | Store only `body` on notes; compute `title_preview` in Rust from the first non-empty trimmed line (max 28 chars, fallback `"New note"`). |
+| **Note Title UX friction** | Requiring a separate title field slows quick capture; having none makes bar chips unreadable. | v1: store only `body`; compute `title_preview` (max 28 chars, fallback `"New note"`). v0.2: add an **optional** nullable `title` (≤64 chars); UI shows `title ?? title_preview`, so quick capture stays title-free and a title is available when wanted. |
 | **KVM / sleep / monitor hotplug orphaning windows** | `HMONITOR` handles invalidate when displays disconnect or change resolution. | Subscribe to `SystemEvents.DisplaySettingsChanged` + `WM_DISPLAYCHANGE`; force-flush/hide open flyouts and rebuild `TriggerWindow` instances per active monitor. |
 
 ---
@@ -196,6 +202,8 @@ pub struct Note {
     pub group_id: Option<i64>,
     pub body: String,
     pub title_preview: String, // Derived: first non-empty line trimmed to <=28 chars, fallback "New note"
+    #[serde(default)]
+    pub title: Option<String>, // v0.2: user-set label; None = use title_preview
     pub is_pinned: bool,
     pub pinned_at_ms: Option<i64>,
     pub created_at_ms: i64,
@@ -208,6 +216,8 @@ pub struct NoteSummary {
     pub id: i64,
     pub group_id: Option<i64>,
     pub title_preview: String,
+    #[serde(default)]
+    pub title: Option<String>, // v0.2: user-set label; None = use title_preview
     pub is_empty: bool,        // Used by UI to decide whether delete needs confirmation
     pub is_pinned: bool,
     pub pinned_at_ms: Option<i64>,
@@ -446,7 +456,8 @@ public sealed class ShellCoordinator : IDisposable
 // 5. Positioning & DPI (all inputs/outputs in Win32 physical screen pixels; applied via SetWindowPos)
 public interface IScreenPositioner
 {
-    PxRect GetTriggerRect(MonitorBounds mon, double dpiScale);  // 100*dpi wide x 4*dpi tall, centered at mon.WorkArea.Top
+    PxRect GetTriggerRect(MonitorBounds mon, double dpiScale);  // 100*dpi wide x 4*dpi tall (pinned by tests)
+    PxRect GetTriggerHitRect(MonitorBounds mon, double dpiScale); // v0.2: 200*dpi wide x 4*dpi tall, centered; TriggerWindow uses this
     PxRect GetBarRect(MonitorBounds mon, double dpiScale);      // min(92% WorkArea.Width, 1100*dpi) x 44*dpi at WorkArea.Top
     PxRect GetGroupListRect(PxRect chipPx, PxSize listPx, MonitorBounds mon); // Below chip, clamped inside WorkArea X/Y
     PxRect GetNoteWindowRect(PxRect anchorPx, PxSize notePx, MonitorBounds mon, bool anchorIsHorizontalBarItem);
@@ -458,10 +469,10 @@ public interface IScreenPositioner
 ```
 
 ### Window Responsibilities (Pre-Created Singletons Except Per-Monitor `TriggerWindow`)
-- **`TriggerWindow`:** `100×4 DIPs`, `WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE`. Starts a `180ms` `DispatcherTimer` on `MouseEnter`; cancels on `MouseLeave`. On tick, verifies `GetCursorPos` is still inside its `GetWindowRect` before calling `ShellCoordinator.OnTriggerDwellElapsed(hMonitor)`.
+- **`TriggerWindow`:** v0.2 `200×4 DIPs` hit window (pill `200×3`), `WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE`. Starts a `180ms` `DispatcherTimer` on `MouseEnter` (anywhere in the 200 DIP strip); cancels on `MouseLeave`. On tick, verifies `GetCursorPos` is still inside its `GetWindowRect` before calling `ShellCoordinator.OnTriggerDwellElapsed(hMonitor)`.
 - **`BarWindow`:** 3-column `Grid` (`1* | Auto | 1*`), strictly button-only (no `TextBox`, permanently `WS_EX_NOACTIVATE`). Left: horizontal scroll viewer of `PinnedItem` chips (`pinned_at_ms ASC`) + `Groups ▾` button (opens `GroupListWindow` in `OpenAllGroups` mode for unpinned groups and `+ New Group`). Center: `+` Quick-Note button locked at `MonitorCenterX`. Right: up to 5 `Recent` note chips (`last_opened_at_ms DESC`). Right-click or hover-action icon on any chip toggles Pin or triggers Delete (inline confirm if non-empty note or any group).
 - **`GroupListWindow`:** Vertical list (`Width = 260 DIPs`, `MaxHeight = 420 DIPs`). Default `WS_EX_NOACTIVATE`; temporarily activates via `FocusHelper.BeginInlineEdit` only when clicking `Rename` (in `OpenGroup` header) or `+ New Group` (in `OpenAllGroups` header), restoring `WS_EX_NOACTIVATE` via `EndInlineEdit` on `Enter`/`Esc`/`Deactivated`. Fixed header also holds Pin toggle, Delete icon (swaps header to `Delete N notes? [Delete] [Cancel]`), and permanent **`+ New Note`** row immediately below header, followed by `NoteSummary` rows (`last_opened_at_ms DESC`).
-- **`NoteWindow`:** Thin `320×280 DIPs` view backed by `NoteEditSession`. Header: Pin toggle, group badge, Delete button (`session.RequestDelete()` deletes immediately if empty, else shows inline `Delete note? [Delete] [Cancel]`), Close `×`. Body: plain `TextBox` (`AcceptsReturn="True"`, `TextWrapping="Wrap"`). Owns a `350ms` `DispatcherTimer` calling `session.OnDebounceElapsed()`; `FlushNow()` calls `session.FlushOnClose()`.
+- **`NoteWindow`:** Thin `320×280 DIPs` view backed by `NoteEditSession`. Header: Pin toggle, group badge, Delete button (`session.RequestDelete()` deletes immediately if empty, else shows inline `Delete note? [Delete] [Cancel]`), Close `×`. v0.2 title row: single-line `TextBox` (`MaxLength=64`, placeholder "Add a title…") above the body; Enter commits + focuses body, Esc reverts + focuses body. Body: plain `TextBox` (`AcceptsReturn="True"`, `TextWrapping="Wrap"`). Owns a `350ms` `DispatcherTimer` calling `session.OnDebounceElapsed()`; `FlushNow()` calls `session.FlushOnClose()`.
 - **`QuickNoteWindow`:** Thin `380×220 DIPs` view centered below `+` (no Save button), backed by `QuickNoteSession`. Focused `TextBox` + target selector: `[Standalone]` | `[Group: <Dropdown>]` | `[Append: <Recent Notes Dropdown>]` + subtle hint `Ctrl+Enter or click outside to save · Esc to discard`. Closing via `Ctrl+Enter` or click-outside calls `session.Commit()`; pressing `Esc` calls `session.Cancel()` and restores `prevForegroundHwnd`.
 
 ### Tricky Win32 Snippets (`Interop/FocusHelper.cs` & `Interop/Win32.cs`)
